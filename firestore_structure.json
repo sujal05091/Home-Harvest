@@ -1,0 +1,190 @@
+{
+  "firestore_structure": {
+    "users": {
+      "description": "User accounts for all roles (customer, cook, rider)",
+      "document_id": "userId (Firebase Auth UID)",
+      "fields": {
+        "uid": "string - Firebase Auth UID",
+        "email": "string - User email",
+        "name": "string - Full name",
+        "phone": "string - Phone number",
+        "role": "string - 'customer' | 'cook' | 'rider'",
+        "verified": "boolean - Cook verification status (only for cooks)",
+        "location": "GeoPoint - Current latitude/longitude",
+        "address": "string - Full address",
+        "fcmToken": "string - Firebase Cloud Messaging token",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      },
+      "indexes": [
+        "role ASC",
+        "verified ASC",
+        "location (Geohash for radius queries)"
+      ]
+    },
+    "dishes": {
+      "description": "Menu items added by verified home cooks",
+      "document_id": "dishId (UUID)",
+      "fields": {
+        "dishId": "string - UUID",
+        "cookId": "string - Reference to users/{cookId}",
+        "cookName": "string - Cook's name",
+        "title": "string - Dish name",
+        "description": "string - Dish description",
+        "ingredients": "array<string> - List of ingredients",
+        "allergens": "array<string> - Allergen warnings",
+        "price": "number - Price in INR",
+        "imageUrl": "string - Firebase Storage URL",
+        "availableSlots": "number - Daily available quantity",
+        "location": "GeoPoint - Cook's location",
+        "address": "string - Cook's address",
+        "rating": "number - Average rating (0-5)",
+        "totalRatings": "number - Count of ratings",
+        "hygieneScore": "number - Admin-assigned score (0-100)",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      },
+      "indexes": [
+        "cookId ASC",
+        "price ASC",
+        "rating DESC",
+        "location (Geohash)"
+      ]
+    },
+    "orders": {
+      "description": "Customer orders with status tracking",
+      "document_id": "orderId (UUID)",
+      "fields": {
+        "orderId": "string - UUID",
+        "customerId": "string - Reference to users/{customerId}",
+        "customerName": "string",
+        "customerPhone": "string",
+        "cookId": "string - Reference to users/{cookId}",
+        "cookName": "string",
+        "dishItems": "array<map> - [{dishId, title, quantity, price}]",
+        "total": "number - Total amount",
+        "status": "string - PLACED|ACCEPTED|ASSIGNED|PICKED_UP|ON_THE_WAY|DELIVERED|CANCELLED",
+        "isHomeToOffice": "boolean - Tiffin delivery mode",
+        "pickupLocation": "GeoPoint - Customer pickup address",
+        "dropLocation": "GeoPoint - Office/delivery address",
+        "pickupAddress": "string",
+        "dropAddress": "string",
+        "riderId": "string - Assigned rider (nullable)",
+        "riderName": "string - Rider name (nullable)",
+        "placedAt": "timestamp",
+        "acceptedAt": "timestamp (nullable)",
+        "assignedAt": "timestamp (nullable)",
+        "pickedUpAt": "timestamp (nullable)",
+        "deliveredAt": "timestamp (nullable)",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      },
+      "indexes": [
+        "customerId ASC, status ASC",
+        "cookId ASC, status ASC",
+        "riderId ASC, status ASC",
+        "status ASC, placedAt DESC"
+      ]
+    },
+    "deliveries": {
+      "description": "Delivery tracking for riders",
+      "document_id": "deliveryId (UUID)",
+      "fields": {
+        "deliveryId": "string - UUID",
+        "orderId": "string - Reference to orders/{orderId}",
+        "riderId": "string - Reference to users/{riderId}",
+        "riderName": "string",
+        "riderPhone": "string",
+        "pickupLocation": "GeoPoint",
+        "dropLocation": "GeoPoint",
+        "currentLocation": "GeoPoint - Real-time rider location",
+        "distanceKm": "number - Total distance",
+        "estimatedTime": "number - ETA in minutes",
+        "status": "string - ASSIGNED|ACCEPTED|PICKED_UP|ON_THE_WAY|DELIVERED",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      },
+      "indexes": [
+        "riderId ASC, status ASC",
+        "orderId ASC",
+        "currentLocation (Geohash)"
+      ]
+    },
+    "cook_verifications": {
+      "description": "Cook verification documents for admin review",
+      "document_id": "verificationId (UUID)",
+      "fields": {
+        "verificationId": "string - UUID",
+        "cookId": "string - Reference to users/{cookId}",
+        "cookName": "string",
+        "cookEmail": "string",
+        "cookPhone": "string",
+        "images": "array<string> - Firebase Storage URLs (kitchen, ID, samples)",
+        "description": "string - Cook's description",
+        "hygieneChecklist": "map<string, boolean> - {cleanKitchen, properStorage, handWashing, freshIngredients}",
+        "status": "string - PENDING|APPROVED|REJECTED",
+        "adminNotes": "string - Rejection reason or feedback (nullable)",
+        "reviewedBy": "string - Admin UID (nullable)",
+        "reviewedAt": "timestamp (nullable)",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      },
+      "indexes": [
+        "cookId ASC",
+        "status ASC, createdAt DESC"
+      ]
+    }
+  },
+  "composite_indexes": [
+    {
+      "collection": "dishes",
+      "fields": [
+        {"field": "cookId", "order": "ASC"},
+        {"field": "createdAt", "order": "DESC"}
+      ]
+    },
+    {
+      "collection": "orders",
+      "fields": [
+        {"field": "customerId", "order": "ASC"},
+        {"field": "status", "order": "ASC"},
+        {"field": "placedAt", "order": "DESC"}
+      ]
+    },
+    {
+      "collection": "orders",
+      "fields": [
+        {"field": "cookId", "order": "ASC"},
+        {"field": "status", "order": "ASC"},
+        {"field": "placedAt", "order": "DESC"}
+      ]
+    }
+  ],
+  "storage_structure": {
+    "dishes": {
+      "path": "dishes/{dishId}/{fileName}",
+      "purpose": "Dish images uploaded by cooks",
+      "allowed_types": ["image/jpeg", "image/png"],
+      "max_size": "5MB"
+    },
+    "verifications": {
+      "path": "verifications/{userId}/{fileName}",
+      "purpose": "Cook verification documents",
+      "allowed_types": ["image/jpeg", "image/png", "application/pdf"],
+      "max_size": "10MB"
+    },
+    "profiles": {
+      "path": "profiles/{userId}/{fileName}",
+      "purpose": "User profile pictures",
+      "allowed_types": ["image/jpeg", "image/png"],
+      "max_size": "2MB"
+    }
+  },
+  "security_notes": {
+    "users": "Users can only read their own document and other basic info",
+    "dishes": "Only verified cooks can create dishes. Cook owns their dishes.",
+    "orders": "Customer, cook, and assigned rider can read. Cook/rider can update status.",
+    "deliveries": "Riders can update location. Customers can track.",
+    "verifications": "Cook can submit. Admin approval required (implement custom claims)."
+  }
+}

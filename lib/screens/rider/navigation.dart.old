@@ -1,0 +1,313 @@
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../services/firestore_service.dart';
+import '../../models/delivery_model.dart';
+import 'dart:async';
+import 'package:geolocator/geolocator.dart';
+
+/// Enhanced rider screen with Google Maps navigation
+class RiderNavigationScreen extends StatefulWidget {
+  final String deliveryId;
+  final String orderId;
+
+  const RiderNavigationScreen({
+    super.key,
+    required this.deliveryId,
+    required this.orderId,
+  });
+
+  @override
+  State<RiderNavigationScreen> createState() => _RiderNavigationScreenState();
+}
+
+class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
+  GoogleMapController? _mapController;
+  final FirestoreService _firestoreService = FirestoreService();
+  StreamSubscription<Position>? _positionSubscription;
+  Position? _currentPosition;
+  
+  Set<Marker> _markers = {};
+  LatLng? _pickupLocation;
+  LatLng? _dropLocation;
+
+  @override
+  void initState() {
+    super.initState();
+    _startLocationTracking();
+  }
+
+  @override
+  void dispose() {
+    _positionSubscription?.cancel();
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  /// Start tracking rider's location and update Firestore
+  void _startLocationTracking() {
+    _positionSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // Update every 10 meters
+      ),
+    ).listen((Position position) {
+      setState(() => _currentPosition = position);
+      
+      // Update location in Firestore
+      _firestoreService.updateDeliveryLocation(
+        widget.deliveryId,
+        position.latitude,
+        position.longitude,
+      );
+
+      // Update map camera
+      if (_mapController != null) {
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLng(
+            LatLng(position.latitude, position.longitude),
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _updateDeliveryStatus(DeliveryStatus status) async {
+    try {
+      await _firestoreService.updateDeliveryStatus(widget.deliveryId, status);
+      
+      if (status == DeliveryStatus.DELIVERED && mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Delivery completed successfully! 🎉'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating status: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Delivery #${widget.deliveryId.substring(0, 8)}'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.call),
+            tooltip: 'Call Customer',
+            onPressed: () {
+              // TODO: Implement call customer
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Calling customer...')),
+              );
+            },
+          ),
+        ],
+      ),
+      body: StreamBuilder<DeliveryModel?>(
+        stream: _firestoreService.getDeliveryById(widget.deliveryId),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final delivery = snapshot.data!;
+          _pickupLocation = LatLng(
+            delivery.pickupLocation.latitude,
+            delivery.pickupLocation.longitude,
+          );
+          _dropLocation = LatLng(
+            delivery.dropLocation.latitude,
+            delivery.dropLocation.longitude,
+          );
+
+          // Update markers
+          _markers = {
+            Marker(
+              markerId: const MarkerId('pickup'),
+              position: _pickupLocation!,
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueOrange,
+              ),
+              infoWindow: const InfoWindow(title: 'Pickup Location'),
+            ),
+            Marker(
+              markerId: const MarkerId('drop'),
+              position: _dropLocation!,
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueGreen,
+              ),
+              infoWindow: const InfoWindow(title: 'Drop Location'),
+            ),
+          };
+
+          if (_currentPosition != null) {
+            _markers.add(
+              Marker(
+                markerId: const MarkerId('rider'),
+                position: LatLng(
+                  _currentPosition!.latitude,
+                  _currentPosition!.longitude,
+                ),
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueBlue,
+                ),
+                infoWindow: const InfoWindow(title: 'You'),
+              ),
+            );
+          }
+
+          return Column(
+            children: [
+              // Map
+              Expanded(
+                flex: 2,
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _pickupLocation!,
+                    zoom: 14,
+                  ),
+                  markers: _markers,
+                  onMapCreated: (controller) => _mapController = controller,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                  zoomControlsEnabled: false,
+                ),
+              ),
+
+              // Action Panel
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Status indicator
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(delivery.status),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.delivery_dining, color: Colors.white),
+                          const SizedBox(width: 8),
+                          Text(
+                            delivery.status.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 16),
+
+                    // Action buttons based on status
+                    if (delivery.status == DeliveryStatus.ASSIGNED)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _updateDeliveryStatus(
+                            DeliveryStatus.ACCEPTED,
+                          ),
+                          icon: const Icon(Icons.check),
+                          label: const Text('Start Pickup'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: const EdgeInsets.all(16),
+                          ),
+                        ),
+                      ),
+
+                    if (delivery.status == DeliveryStatus.ACCEPTED)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _updateDeliveryStatus(
+                            DeliveryStatus.PICKED_UP,
+                          ),
+                          icon: const Icon(Icons.shopping_bag),
+                          label: const Text('Picked Up - Start Delivery'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFC8019),
+                            padding: const EdgeInsets.all(16),
+                          ),
+                        ),
+                      ),
+
+                    if (delivery.status == DeliveryStatus.PICKED_UP)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _updateDeliveryStatus(
+                            DeliveryStatus.DELIVERED,
+                          ),
+                          icon: const Icon(Icons.check_circle),
+                          label: const Text('Mark as Delivered'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: const EdgeInsets.all(16),
+                          ),
+                        ),
+                      ),
+
+                    // Earnings info
+                    if (delivery.deliveryFee != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          'Earnings: ₹${delivery.deliveryFee}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFFC8019),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Color _getStatusColor(DeliveryStatus status) {
+    switch (status) {
+      case DeliveryStatus.ASSIGNED:
+        return Colors.blue;
+      case DeliveryStatus.ACCEPTED:
+        return Colors.orange;
+      case DeliveryStatus.PICKED_UP:
+        return Colors.purple;
+      case DeliveryStatus.DELIVERED:
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+}

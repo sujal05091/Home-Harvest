@@ -1,0 +1,51 @@
+// This file has been replaced with OSM implementation
+// See: lib/widgets/osm_map_widget.dart (created by map_helpers.dart)
+// Original Google Maps code preserved for reference
+
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+class MapWidget extends StatefulWidget {
+  final LatLng initialPosition;
+  final Set<Marker> markers;
+  final Set<Polyline> polylines;
+
+  const MapWidget({
+    super.key,
+    required this.initialPosition,
+    this.markers = const {},
+    this.polylines = const {},
+  });
+
+  @override
+  State<MapWidget> createState() => _MapWidgetState();
+}
+
+class _MapWidgetState extends State<MapWidget> {
+  GoogleMapController? _controller;
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: widget.initialPosition,
+        zoom: 14,
+      ),
+      markers: widget.markers,
+      polylines: widget.polylines,
+      onMapCreated: (controller) {
+        _controller = controller;
+      },
+      myLocationEnabled: true,
+      myLocationButtonEnabled: true,
+      zoomControlsEnabled: true,
+      mapType: MapType.normal,
+    );
+  }
+}

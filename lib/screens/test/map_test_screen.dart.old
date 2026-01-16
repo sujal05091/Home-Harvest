@@ -1,0 +1,117 @@
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+/// 🗺️ SIMPLE MAP TEST SCREEN
+/// 
+/// This is a minimal test to check if Google Maps is working.
+/// If this screen shows a map, then all your map screens will work.
+
+class MapTestScreen extends StatefulWidget {
+  const MapTestScreen({super.key});
+
+  @override
+  State<MapTestScreen> createState() => _MapTestScreenState();
+}
+
+class _MapTestScreenState extends State<MapTestScreen> {
+  GoogleMapController? _controller;
+  
+  // Default location: India Gate, New Delhi
+  static const LatLng _center = LatLng(28.6129, 77.2295);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('🗺️ Map Test'),
+        backgroundColor: Colors.orange,
+      ),
+      body: Column(
+        children: [
+          // Instructions
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.blue.shade50,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'If you see a map below with India Gate marker, Google Maps is working!',
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '❌ If you see gray screen: Enable "Maps SDK for Android" in Google Cloud Console',
+                  style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                ),
+                Text(
+                  '❌ If you see error: Check API key and internet connection',
+                  style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                ),
+              ],
+            ),
+          ),
+          
+          // Google Map
+          Expanded(
+            child: GoogleMap(
+              onMapCreated: (GoogleMapController controller) {
+                _controller = controller;
+              },
+              initialCameraPosition: const CameraPosition(
+                target: _center,
+                zoom: 15.0,
+              ),
+              markers: {
+                const Marker(
+                  markerId: MarkerId('test'),
+                  position: _center,
+                  infoWindow: InfoWindow(
+                    title: 'Test Location',
+                    snippet: 'If you see this, Maps is working! ✅',
+                  ),
+                ),
+              },
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
+              zoomControlsEnabled: true,
+              mapType: MapType.normal,
+            ),
+          ),
+          
+          // Status
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.green.shade50,
+            child: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '✅ If map loaded above, your setup is correct!',
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

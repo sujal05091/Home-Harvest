@@ -1,0 +1,8 @@
+{
+  "firestore": {
+    "rules": "FIRESTORE_RULES.txt"
+  },
+  "functions": {
+    "source": "functions"
+  }
+}

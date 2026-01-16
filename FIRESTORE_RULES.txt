@@ -1,0 +1,132 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Users collection (Updated for FCM tokens)
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+      
+      // Allow FCM token, online status, and location updates
+      allow update: if isOwner(userId) || (
+        isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['fcmToken', 'isOnline', 'currentLocation', 'fcmTokenUpdatedAt', 'lastActive'])
+      );
+    }
+    
+    // Rider locations (Real-time GPS tracking)
+    match /riderLocations/{riderId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(riderId);
+    }
+    
+    match /rider_locations/{riderId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(riderId);
+    }
+    
+    // Dishes collection
+    match /dishes/{dishId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && 
+        resource.data.cookId == request.auth.uid;
+    }
+    
+    // Orders collection (Updated for delivery flow + notifications)
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.cookId ||
+        request.auth.uid == resource.data.riderId ||
+        request.auth.uid == resource.data.assignedRiderId ||
+        // Allow riders to read orders they've been notified about (PLACED status)
+        (resource.data.status == 'PLACED' && request.auth.uid in resource.data.get('notifiedRiders', [])) ||
+        // Allow assigned riders to read RIDER_ASSIGNED orders
+        (resource.data.status in ['RIDER_ASSIGNED', 'RIDER_ACCEPTED', 'ON_THE_WAY_TO_PICKUP', 'PICKED_UP', 'ON_THE_WAY_TO_DROP'] && 
+         request.auth.uid == resource.data.get('assignedRiderId', ''))
+      );
+      
+      allow create: if isAuthenticated();
+      
+      // Updated to support delivery partner assignment + notification tracking
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.cookId ||
+        request.auth.uid == resource.data.riderId ||
+        request.auth.uid == resource.data.assignedRiderId ||
+        
+        // ANY rider can accept/reject during assignment phase
+        (request.resource.data.status in ['PLACED', 'ACCEPTED', 'RIDER_ASSIGNED', 'RIDER_ACCEPTED', 'SEARCHING_RIDER'] &&
+         request.resource.data.keys().hasAny(['assignedRiderId', 'assignedRiderName', 'assignedRiderPhone', 'rejectedBy', 'notifiedRiders', 'searchStartedAt', 'notificationsSent', 'notificationsSentAt', 'notificationSent']))
+      );
+    }
+    
+    // Cook verifications
+    match /cook_verifications/{verificationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+        request.auth.uid == resource.data.cookId;
+    }
+    
+    // Deliveries collection
+    match /deliveries/{deliveryId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+    }
+    
+    // Addresses collection
+    match /addresses/{addressId} {
+      allow read, write: if isAuthenticated() && 
+        request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated();
+    }
+    
+    // Reviews collection
+    match /reviews/{reviewId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && 
+        request.auth.uid == resource.data.customerId;
+    }
+    
+    // Chats collection
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.senderId ||
+        request.auth.uid == resource.data.receiverId
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.senderId ||
+        request.auth.uid == resource.data.receiverId
+      );
+    }
+    
+    // Notifications collection - FOR RIDER PUSH NOTIFICATIONS
+    match /notifications/{notificationId} {
+      // Only recipient can read their notifications
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.recipientId;
+      // Any authenticated user can create notifications (e.g., customer placing order)
+      allow create: if isAuthenticated();
+      // Only recipient can update (mark as read)
+      allow update: if isAuthenticated() && 
+        request.auth.uid == resource.data.recipientId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
+      // Only recipient can delete
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.recipientId;
+    }
+  }
+}

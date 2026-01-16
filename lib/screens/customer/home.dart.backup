@@ -1,0 +1,197 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:lottie/lottie.dart';
+import '../../providers/dishes_provider.dart';
+import '../../providers/orders_provider.dart';
+import '../../app_router.dart';
+import '../../models/dish_model.dart';
+
+class CustomerHomeScreen extends StatefulWidget {
+  const CustomerHomeScreen({super.key});
+
+  @override
+  State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
+}
+
+class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+  String _searchQuery = '';
+  bool _vegOnly = false;
+  String _sortBy = 'popular'; // popular, price_low, price_high, rating
+  
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<DishesProvider>(context, listen: false).loadDishes();
+    });
+  }
+
+  List<DishModel> _getFilteredDishes(List<DishModel> dishes) {
+    var filtered = dishes.where((dish) {
+      // Search filter
+      if (_searchQuery.isNotEmpty) {
+        final query = _searchQuery.toLowerCase();
+        if (!dish.title.toLowerCase().contains(query) &&
+            !dish.cookName.toLowerCase().contains(query) &&
+            !dish.description.toLowerCase().contains(query)) {
+          return false;
+        }
+      }
+      
+      // Veg filter
+      if (_vegOnly && !dish.isVeg) return false;
+      
+      return true;
+    }).toList();
+
+    // Sort
+    switch (_sortBy) {
+      case 'price_low':
+        filtered.sort((a, b) => a.price.compareTo(b.price));
+        break;
+      case 'price_high':
+        filtered.sort((a, b) => b.price.compareTo(a.price));
+        break;
+      case 'rating':
+        filtered.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+        break;
+      // 'popular' is default order from Firestore
+    }
+
+    return filtered;
+  }
+
+  void _showSortOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Sort By',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            _buildSortOption('Popular', 'popular'),
+            _buildSortOption('Price: Low to High', 'price_low'),
+            _buildSortOption('Price: High to Low', 'price_high'),
+            _buildSortOption('Rating', 'rating'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSortOption(String label, String value) {
+    return ListTile(
+      title: Text(label),
+      trailing: _sortBy == value
+          ? const Icon(Icons.check, color: Color(0xFFFC8019))
+          : null,
+      onTap: () {
+        setState(() => _sortBy = value);
+        Navigator.pop(context);
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dishesProvider = Provider.of<DishesProvider>(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('HomeHarvest'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.explore),
+            tooltip: 'Discover Cooks',
+            onPressed: () => Navigator.pushNamed(context, AppRouter.cooksDiscovery),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              Provider.of<DishesProvider>(context, listen: false).loadDishes();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.shopping_cart),
+            onPressed: () => Navigator.pushNamed(context, AppRouter.cart),
+          ),
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () => Navigator.pushNamed(context, AppRouter.profile),
+          ),
+        ],
+      ),
+      body: dishesProvider.isLoading
+          ? Center(child: Lottie.asset('assets/lottie/loading_auth.json', width: 100, height: 100))
+          : dishesProvider.dishes.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Lottie.asset(
+                        'assets/lottie/empty_cart.json',
+                        width: 200,
+                        height: 200,
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'No dishes available',
+                        style: TextStyle(fontSize: 18, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 10),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Provider.of<DishesProvider>(context, listen: false).loadDishes();
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh'),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: dishesProvider.dishes.length,
+                  itemBuilder: (context, index) {
+                    final dish = dishesProvider.dishes[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      child: ListTile(
+                        leading: dish.imageUrl.isNotEmpty
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  dish.imageUrl,
+                                  width: 60,
+                                  height: 60,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Icon(Icons.restaurant, size: 50);
+                                  },
+                                ),
+                              )
+                            : const Icon(Icons.restaurant, size: 50),
+                        title: Text(dish.title),
+                        subtitle: Text('₹${dish.price} • ${dish.cookName}'),
+                        trailing: const Icon(Icons.arrow_forward_ios),
+                        onTap: () => Navigator.pushNamed(
+                          context,
+                          AppRouter.dishDetail,
+                          arguments: {'dishId': dish.dishId},
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}

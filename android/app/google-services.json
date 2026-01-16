@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "718230008456",
+    "project_id": "homeharvest-d6d96",
+    "storage_bucket": "homeharvest-d6d96.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:718230008456:android:7a03b644b6e74610c7653d",
+        "android_client_info": {
+          "package_name": "com.example.home_harvest_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_Pd9ovEli618ymS6fZjoO9nUniQ1YptU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,126 @@
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config/api_config.dart';
+
+class MapsService {
+  static String get _apiKey => ApiConfig.googleMapsApiKey;
+
+  // Get directions between two points
+  Future<Map<String, dynamic>?> getDirections({
+    required LatLng origin,
+    required LatLng destination,
+  }) async {
+    final String url =
+        'https://maps.googleapis.com/maps/api/directions/json?'
+        'origin=${origin.latitude},${origin.longitude}&'
+        'destination=${destination.latitude},${destination.longitude}&'
+        'key=$_apiKey';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+    } catch (e) {
+      print('Error getting directions: $e');
+    }
+    return null;
+  }
+
+  // Parse polyline points from directions response
+  List<LatLng> decodePolyline(String encoded) {
+    List<LatLng> points = [];
+    int index = 0;
+    int len = encoded.length;
+    int lat = 0;
+    int lng = 0;
+
+    while (index < len) {
+      int b;
+      int shift = 0;
+      int result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lng += dlng;
+
+      points.add(LatLng(lat / 1e5, lng / 1e5));
+    }
+
+    return points;
+  }
+
+  // Get estimated duration and distance
+  Future<Map<String, dynamic>> getRouteInfo({
+    required LatLng origin,
+    required LatLng destination,
+  }) async {
+    final directions = await getDirections(origin: origin, destination: destination);
+
+    if (directions != null && directions['routes'] != null && directions['routes'].isNotEmpty) {
+      final route = directions['routes'][0];
+      final leg = route['legs'][0];
+
+      return {
+        'distance': leg['distance']['text'],
+        'distanceValue': leg['distance']['value'], // in meters
+        'duration': leg['duration']['text'],
+        'durationValue': leg['duration']['value'], // in seconds
+        'polyline': route['overview_polyline']['points'],
+      };
+    }
+
+    return {
+      'distance': 'Unknown',
+      'distanceValue': 0,
+      'duration': 'Unknown',
+      'durationValue': 0,
+      'polyline': '',
+    };
+  }
+
+  // Open Google Maps navigation
+  Future<void> openGoogleMapsNavigation({
+    required double destinationLat,
+    required double destinationLng,
+    String? label,
+  }) async {
+    final String googleMapsUrl =
+        'https://www.google.com/maps/dir/?api=1&destination=$destinationLat,$destinationLng&travelmode=driving';
+
+    final Uri uri = Uri.parse(googleMapsUrl);
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      throw 'Could not launch Google Maps';
+    }
+  }
+
+  // Create custom map markers
+  Future<BitmapDescriptor> createCustomMarker({
+    required String assetPath,
+    int width = 100,
+  }) async {
+    return await BitmapDescriptor.asset(
+      ImageConfiguration(size: Size(width.toDouble(), width.toDouble())),
+      assetPath,
+    );
+  }
+}
