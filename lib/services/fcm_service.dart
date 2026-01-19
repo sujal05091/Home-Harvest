@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -27,6 +29,29 @@ class FCMService {
   /// Initialize FCM and request permissions
   Future<void> initialize() async {
     try {
+      // � ANDROID 13+ NOTIFICATION PERMISSION (CRITICAL)
+      if (Platform.isAndroid) {
+        final status = await Permission.notification.status;
+        
+        if (status.isDenied) {
+          print('⚠️ Android 13+: Requesting notification permission...');
+          final result = await Permission.notification.request();
+          
+          if (result.isGranted) {
+            print('✅ Android 13+: Notification permission GRANTED');
+          } else if (result.isPermanentlyDenied) {
+            print('❌ Android 13+: Notification permission PERMANENTLY DENIED');
+            _showPermissionDeniedDialog();
+            return;
+          } else {
+            print('❌ Android 13+: Notification permission DENIED');
+            return;
+          }
+        } else if (status.isGranted) {
+          print('✅ Android 13+: Notification permission already granted');
+        }
+      }
+
       // 📲 Request notification permissions (iOS & Android 13+)
       NotificationSettings settings = await _fcm.requestPermission(
         alert: true,
@@ -78,6 +103,34 @@ class FCMService {
     } catch (e) {
       print('❌ FCM initialization error: $e');
     }
+  }
+
+  /// Show dialog when notification permission is permanently denied
+  void _showPermissionDeniedDialog() {
+    if (_navigatorKey?.currentContext == null) return;
+    
+    showDialog(
+      context: _navigatorKey!.currentContext!,
+      builder: (context) => AlertDialog(
+        title: const Text('🔔 Notifications Disabled'),
+        content: const Text(
+          'Please enable notification permissions in Settings to receive delivery updates.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              openAppSettings();
+              Navigator.pop(context);
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Get FCM token for current device

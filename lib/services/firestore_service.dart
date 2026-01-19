@@ -296,4 +296,183 @@ class FirestoreService {
       'updatedAt': Timestamp.now(),
     });
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 🔐 ORDER STATE MACHINE - Production-Grade Status Management
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /// Valid order status transitions map
+  static const Map<OrderStatus, List<OrderStatus>> _validTransitions = {
+    OrderStatus.PLACED: [OrderStatus.ACCEPTED, OrderStatus.CANCELLED],
+    OrderStatus.ACCEPTED: [OrderStatus.RIDER_ASSIGNED, OrderStatus.CANCELLED],
+    OrderStatus.RIDER_ASSIGNED: [
+      OrderStatus.RIDER_ACCEPTED,
+      OrderStatus.PLACED,
+      OrderStatus.CANCELLED
+    ],
+    OrderStatus.RIDER_ACCEPTED: [
+      OrderStatus.ON_THE_WAY_TO_PICKUP,
+      OrderStatus.CANCELLED
+    ],
+    OrderStatus.ON_THE_WAY_TO_PICKUP: [OrderStatus.PICKED_UP],
+    OrderStatus.PICKED_UP: [OrderStatus.ON_THE_WAY_TO_DROP],
+    OrderStatus.ON_THE_WAY_TO_DROP: [OrderStatus.DELIVERED],
+    OrderStatus.DELIVERED: [],
+    OrderStatus.CANCELLED: [],
+  };
+
+  /// Validate if status transition is allowed
+  bool isValidOrderTransition(OrderStatus from, OrderStatus to) {
+    if (from == to) return false;
+    final allowed = _validTransitions[from];
+    return allowed?.contains(to) ?? false;
+  }
+
+  /// Update order status with validation
+  /// Throws [StateError] if transition is invalid
+  Future<void> updateOrderStatus({
+    required String orderId,
+    required OrderStatus newStatus,
+    Map<String, dynamic>? additionalData,
+  }) async {
+    try {
+      final orderDoc = await _firestore.collection('orders').doc(orderId).get();
+
+      if (!orderDoc.exists) {
+        throw StateError('Order $orderId not found');
+      }
+
+      final orderData = orderDoc.data()!;
+      final currentStatus = OrderStatus.values.firstWhere(
+        (e) => e.toString().split('.').last == orderData['status'],
+        orElse: () => OrderStatus.PLACED,
+      );
+
+      // Validate transition
+      if (!isValidOrderTransition(currentStatus, newStatus)) {
+        throw StateError(
+            'Invalid status transition: ${currentStatus.name} → ${newStatus.name}');
+      }
+
+      // Prepare update data
+      final updateData = {
+        'status': newStatus.toString().split('.').last,
+        'updatedAt': FieldValue.serverTimestamp(),
+        ...?additionalData,
+      };
+
+      // Add status-specific timestamps
+      switch (newStatus) {
+        case OrderStatus.ACCEPTED:
+          updateData['acceptedAt'] = FieldValue.serverTimestamp();
+          break;
+        case OrderStatus.RIDER_ACCEPTED:
+          updateData['riderAcceptedAt'] = FieldValue.serverTimestamp();
+          break;
+        case OrderStatus.PICKED_UP:
+          updateData['pickedUpAt'] = FieldValue.serverTimestamp();
+          break;
+        case OrderStatus.DELIVERED:
+          updateData['deliveredAt'] = FieldValue.serverTimestamp();
+          break;
+        case OrderStatus.CANCELLED:
+          updateData['cancelledAt'] = FieldValue.serverTimestamp();
+          break;
+        default:
+          break;
+      }
+
+      await _firestore.collection('orders').doc(orderId).update(updateData);
+
+      print(
+          '✅ Order $orderId: ${currentStatus.name} → ${newStatus.name}');
+    } catch (e) {
+      print('❌ Failed to update order status: $e');
+      rethrow;
+    }
+  }
+
+  /// Cook accepts order
+  Future<void> cookAcceptOrder(String orderId, String cookId) async {
+    await updateOrderStatus(
+      orderId: orderId,
+      newStatus: OrderStatus.ACCEPTED,
+      additionalData: {'acceptedBy': cookId},
+    );
+  }
+
+  /// Cook marks food as ready (triggers rider assignment)
+  Future<void> markFoodReady(String orderId) async {
+    await updateOrderStatus(
+      orderId: orderId,
+      newStatus: OrderStatus.RIDER_ASSIGNED,
+      additionalData: {'foodReadyAt': FieldValue.serverTimestamp()},
+    );
+  }
+
+  /// Rider accepts delivery
+  Future<void> riderAcceptOrder({
+    required String orderId,
+    required String riderId,
+    required String riderName,
+    String? riderPhone,
+  }) async {
+    await updateOrderStatus(
+      orderId: orderId,
+      newStatus: OrderStatus.RIDER_ACCEPTED,
+      additionalData: {
+        'assignedRiderId': riderId,
+        'assignedRiderName': riderName,
+        if (riderPhone != null) 'assignedRiderPhone': riderPhone,
+      },
+    );
+  }
+
+  /// Get user-friendly status description
+  static String getOrderStatusDescription(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.PLACED:
+        return 'Finding delivery partner...';
+      case OrderStatus.ACCEPTED:
+        return 'Preparing your order';
+      case OrderStatus.RIDER_ASSIGNED:
+        return 'Delivery partner assigned';
+      case OrderStatus.RIDER_ACCEPTED:
+        return 'On the way to pickup';
+      case OrderStatus.ON_THE_WAY_TO_PICKUP:
+        return 'Picking up your order';
+      case OrderStatus.PICKED_UP:
+        return 'Order picked up';
+      case OrderStatus.ON_THE_WAY_TO_DROP:
+        return 'On the way to you';
+      case OrderStatus.DELIVERED:
+        return 'Delivered successfully';
+      case OrderStatus.CANCELLED:
+        return 'Order cancelled';
+    }
+  }
+
+  /// Get progress percentage for UI
+  static double getOrderProgress(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.PLACED:
+        return 0.1;
+      case OrderStatus.ACCEPTED:
+        return 0.25;
+      case OrderStatus.RIDER_ASSIGNED:
+        return 0.4;
+      case OrderStatus.RIDER_ACCEPTED:
+        return 0.5;
+      case OrderStatus.ON_THE_WAY_TO_PICKUP:
+        return 0.65;
+      case OrderStatus.PICKED_UP:
+        return 0.75;
+      case OrderStatus.ON_THE_WAY_TO_DROP:
+        return 0.85;
+      case OrderStatus.DELIVERED:
+        return 1.0;
+      case OrderStatus.CANCELLED:
+        return 0.0;
+    }
+  }
 }

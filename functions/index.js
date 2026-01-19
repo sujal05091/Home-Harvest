@@ -114,6 +114,199 @@ exports.notifyRiderOnOrderAssignment = functions.firestore
   });
 
 /**
+ * 🤖 CLOUD FUNCTION: Automatic Rider Assignment by Distance
+ * Finds the nearest online rider within 5km and assigns automatically
+ */
+exports.autoAssignNearestRider = functions.firestore
+  .document('orders/{orderId}')
+  .onCreate(async (snapshot, context) => {
+    const orderId = context.params.orderId;
+    const orderData = snapshot.data();
+    
+    console.log(`📦 New order created: ${orderId} - Auto-assigning rider...`);
+    
+    // Only auto-assign if status is PLACED (not manually assigned)
+    if (orderData.status !== 'PLACED' || orderData.assignedRiderId) {
+      console.log(`⏭️ Order already assigned or not in PLACED status`);
+      return null;
+    }
+    
+    try {
+      // Get order pickup location
+      const pickupLat = orderData.pickupLatitude;
+      const pickupLng = orderData.pickupLongitude;
+      
+      if (!pickupLat || !pickupLng) {
+        console.log('❌ Order missing pickup coordinates');
+        return null;
+      }
+      
+      // Get all online riders with current location
+      const ridersSnapshot = await admin.firestore()
+        .collection('rider_locations')
+        .where('isActive', '==', true)
+        .get();
+      
+      if (ridersSnapshot.empty) {
+        console.log('❌ No active riders found');
+        
+        // Notify customer that no riders available
+        await snapshot.ref.update({
+          status: 'SEARCHING_RIDER',
+          searchStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        return null;
+      }
+      
+      console.log(`📊 Found ${ridersSnapshot.size} active riders`);
+      
+      // Calculate distance for each rider
+      const ridersWithDistance = [];
+      
+      for (const riderLocationDoc of ridersSnapshot.docs) {
+        const locationData = riderLocationDoc.data();
+        const riderId = locationData.riderId;
+        
+        // Get rider details
+        const riderDoc = await admin.firestore()
+          .collection('users')
+          .doc(riderId)
+          .get();
+        
+        if (!riderDoc.exists) continue;
+        
+        const riderData = riderDoc.data();
+        
+        // Check if rider is online and available
+        if (!riderData.isOnline || riderData.currentOrderId) {
+          console.log(`⏭️ Rider ${riderId} is offline or busy`);
+          continue;
+        }
+        
+        // Calculate distance using Haversine formula
+        const distance = calculateDistance(
+          pickupLat,
+          pickupLng,
+          locationData.latitude,
+          locationData.longitude
+        );
+        
+        // Only consider riders within 5km
+        if (distance <= 5) {
+          ridersWithDistance.push({
+            riderId: riderId,
+            riderName: riderData.name || 'Unknown',
+            riderPhone: riderData.phone || '',
+            fcmToken: riderData.fcmToken,
+            distance: distance,
+            latitude: locationData.latitude,
+            longitude: locationData.longitude,
+          });
+        }
+      }
+      
+      if (ridersWithDistance.length === 0) {
+        console.log('❌ No riders within 5km radius');
+        
+        await snapshot.ref.update({
+          status: 'NO_RIDERS_NEARBY',
+          searchedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        return null;
+      }
+      
+      // Sort by distance (nearest first)
+      ridersWithDistance.sort((a, b) => a.distance - b.distance);
+      
+      const nearestRider = ridersWithDistance[0];
+      console.log(`✅ Nearest rider: ${nearestRider.riderName} (${nearestRider.distance.toFixed(2)}km away)`);
+      
+      // Assign order to nearest rider
+      await snapshot.ref.update({
+        status: 'RIDER_ASSIGNED',
+        assignedRiderId: nearestRider.riderId,
+        assignedRiderName: nearestRider.riderName,
+        assignedRiderPhone: nearestRider.riderPhone,
+        assignedRiderDistance: nearestRider.distance,
+        assignedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      
+      // Send FCM notification to assigned rider
+      if (nearestRider.fcmToken) {
+        const message = {
+          notification: {
+            title: '🚀 New Delivery Request',
+            body: `Pickup from ${orderData.pickupAddress}. ${nearestRider.distance.toFixed(1)}km away. Tap to accept.`,
+          },
+          data: {
+            orderId: orderId,
+            type: 'NEW_DELIVERY_REQUEST',
+            pickupAddress: orderData.pickupAddress || '',
+            dropAddress: orderData.dropAddress || '',
+            distance: nearestRider.distance.toString(),
+            status: 'RIDER_ASSIGNED',
+          },
+          token: nearestRider.fcmToken,
+          android: {
+            priority: 'high',
+            notification: {
+              sound: 'default',
+              channelId: 'delivery_requests_channel',
+              priority: 'max',
+            },
+          },
+          apns: {
+            payload: {
+              aps: {
+                sound: 'default',
+                badge: 1,
+              },
+            },
+          },
+        };
+        
+        try {
+          const response = await admin.messaging().send(message);
+          console.log(`✅ Notification sent to rider: ${response}`);
+        } catch (error) {
+          console.error(`❌ Error sending notification: ${error}`);
+        }
+      }
+      
+      return nearestRider;
+    } catch (error) {
+      console.error(`❌ Error auto-assigning rider: ${error}`);
+      return null;
+    }
+  });
+
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ * Returns distance in kilometers
+ */
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  
+  return distance;
+}
+
+function toRad(degrees) {
+  return degrees * (Math.PI / 180);
+}
+
+/**
  * 🔔 CLOUD FUNCTION: Notify nearby riders when new order is placed
  * Finds riders within 5km radius and sends notifications
  */

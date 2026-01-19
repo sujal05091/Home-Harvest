@@ -2,7 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper functions
+    // ═════════════════════════════════════════════════════════════════════
+    // 🔐 HELPER FUNCTIONS
+    // ═════════════════════════════════════════════════════════════════════
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -11,122 +13,203 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
-    // ===================
-    // RIDER LOCATIONS (Real-time GPS tracking)
-    // ===================
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isCook() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'cook';
+    }
+    
+    function isRider() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider';
+    }
+    
+    function isCustomer() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer';
+    }
+    
+    // Valid order status transitions
+    function isValidStatusTransition(oldStatus, newStatus) {
+      return (oldStatus == 'PLACED' && newStatus in ['ACCEPTED', 'CANCELLED']) ||
+             (oldStatus == 'ACCEPTED' && newStatus in ['RIDER_ASSIGNED', 'CANCELLED']) ||
+             (oldStatus == 'RIDER_ASSIGNED' && newStatus in ['RIDER_ACCEPTED', 'PLACED', 'CANCELLED']) ||
+             (oldStatus == 'RIDER_ACCEPTED' && newStatus in ['ON_THE_WAY_TO_PICKUP', 'CANCELLED']) ||
+             (oldStatus == 'ON_THE_WAY_TO_PICKUP' && newStatus == 'PICKED_UP') ||
+             (oldStatus == 'PICKED_UP' && newStatus == 'ON_THE_WAY_TO_DROP') ||
+             (oldStatus == 'ON_THE_WAY_TO_DROP' && newStatus == 'DELIVERED') ||
+             (oldStatus == 'CANCELLED' && newStatus == 'CANCELLED') ||
+             (oldStatus == 'DELIVERED' && newStatus == 'DELIVERED');
+    }
+    
+    // ═════════════════════════════════════════════════════════════════════
+    // 🚀 RIDER LOCATIONS (Real-time GPS tracking)
+    // ═════════════════════════════════════════════════════════════════════
     match /rider_locations/{riderId} {
       // Anyone authenticated can read (for live tracking)
       allow read: if isAuthenticated();
       
-      // Only the rider can write their own location
-      allow write: if isUser(riderId);
+      // Only the rider themselves OR admin can write their location
+      allow write: if isUser(riderId) || isAdmin();
     }
     
-    // Alternative collection name (riderLocations without underscore)
     match /riderLocations/{riderId} {
-      // Anyone authenticated can read (for live tracking)
       allow read: if isAuthenticated();
-      
-      // Only the rider can write their own location
-      allow write: if isUser(riderId);
+      allow write: if isUser(riderId) || isAdmin();
     }
     
-    // ===================
-    // ORDERS
-    // ===================
+    // ═════════════════════════════════════════════════════════════════════
+    // 📦 ORDERS - Role-Based Access with State Validation
+    // ═════════════════════════════════════════════════════════════════════
     match /orders/{orderId} {
-      // Read: Customer, Cook, or assigned Rider
+      // Read: Customer, Cook, Assigned Rider, or Admin
       allow read: if isAuthenticated() && (
         resource.data.customerId == request.auth.uid ||
         resource.data.cookId == request.auth.uid ||
-        resource.data.assignedRiderId == request.auth.uid
+        resource.data.assignedRiderId == request.auth.uid ||
+        isAdmin()
       );
       
-      // Create: Only authenticated users (customer creating order)
+      // Create: Only customers can create orders
       allow create: if isAuthenticated() && 
-        request.resource.data.customerId == request.auth.uid;
+        isCustomer() &&
+        request.resource.data.customerId == request.auth.uid &&
+        request.resource.data.status == 'PLACED';
       
-      // Update: Customer (cancel), Cook (accept), Rider (status updates), System (FCM)
+      // Update with strict role-based permissions and status validation
       allow update: if isAuthenticated() && (
-        // Customer can cancel their own order
+        // ADMIN: Full access
+        isAdmin() ||
+        
+        // CUSTOMER: Can only cancel their own orders
         (resource.data.customerId == request.auth.uid && 
-         request.resource.data.status == 'CANCELLED') ||
+         isCustomer() &&
+         request.resource.data.status == 'CANCELLED' &&
+         isValidStatusTransition(resource.data.status, 'CANCELLED')) ||
         
-        // Cook can accept their order
+        // COOK: Can accept/reject orders assigned to them
         (resource.data.cookId == request.auth.uid && 
-         request.resource.data.status in ['ACCEPTED', 'CANCELLED']) ||
+         isCook() &&
+         request.resource.data.status in ['ACCEPTED', 'RIDER_ASSIGNED', 'CANCELLED'] &&
+         isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
         
-        // Rider can update status when assigned
+        // RIDER (ASSIGNED): Can update status after being assigned
         (resource.data.assignedRiderId == request.auth.uid &&
+         isRider() &&
          request.resource.data.status in [
            'RIDER_ACCEPTED',
            'ON_THE_WAY_TO_PICKUP',
            'PICKED_UP',
            'ON_THE_WAY_TO_DROP',
            'DELIVERED'
-         ]) ||
+         ] &&
+         isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
          
-        // ANY rider can update during assignment phase (before RIDER_ACCEPTED)
-        // This allows riders to accept orders and add themselves to rejectedBy array
-        (request.resource.data.status in ['PLACED', 'ACCEPTED', 'RIDER_ASSIGNED', 'RIDER_ACCEPTED'] &&
-         request.resource.data.keys().hasAny(['assignedRiderId', 'assignedRiderName', 'rejectedBy', 'notifiedRiders']))
+        // RIDER (UNASSIGNED): Can accept orders or reject them
+        (isRider() &&
+         request.resource.data.status in ['RIDER_ACCEPTED', 'RIDER_ASSIGNED'] &&
+         request.resource.data.keys().hasAny(['assignedRiderId', 'assignedRiderName', 'rejectedBy', 'notifiedRiders']) &&
+         isValidStatusTransition(resource.data.status, request.resource.data.status))
       );
       
-      // Delete: Not allowed
-      allow delete: if false;
+      // Delete: Only admins
+      allow delete: if isAdmin();
     }
     
-    // ===================
-    // USERS (FCM tokens and online status)
-    // ===================
+    // ═════════════════════════════════════════════════════════════════════
+    // 👥 USERS - Profile Management with Role Protection
+    // ═════════════════════════════════════════════════════════════════════
     match /users/{userId} {
-      // Read: Anyone authenticated (for displaying names, finding riders, etc.)
+      // Read: Anyone authenticated (for names, finding riders, etc.)
       allow read: if isAuthenticated();
       
-      // Write: Only the user themselves
-      // Allow partial updates for FCM token, isOnline, currentLocation
-      allow write: if isUser(userId);
+      // Create: During signup
+      allow create: if isAuthenticated() && 
+        request.auth.uid == userId;
       
-      // Allow FCM token updates without full authentication (for background updates)
-      allow update: if isUser(userId) || (
-        isAuthenticated() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmToken', 'isOnline', 'currentLocation'])
+      // Update: User can update their own profile
+      // CRITICAL: Users CANNOT change their own role (only admin can)
+      allow update: if isAuthenticated() && (
+        // User updates own profile (except role)
+        (isUser(userId) && 
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isVerified'])) ||
+        
+        // Admin can update anyone's profile including role and verification
+        isAdmin()
       );
+      
+      // Delete: Only admin
+      allow delete: if isAdmin();
     }
     
-    // ===================
-    // DISHES
-    // ===================
+    // ═════════════════════════════════════════════════════════════════════
+    // 🍽️ DISHES - Cook-Only Management
+    // ═════════════════════════════════════════════════════════════════════
     match /dishes/{dishId} {
       // Read: Anyone authenticated
       allow read: if isAuthenticated();
       
-      // Write: Only the cook who owns the dish
+      // Create: Only verified cooks
       allow create: if isAuthenticated() && 
-        request.resource.data.cookId == request.auth.uid;
+        isCook() &&
+        request.resource.data.cookId == request.auth.uid &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified == true;
       
-      allow update, delete: if isAuthenticated() && 
-        resource.data.cookId == request.auth.uid;
+      // Update/Delete: Only the cook who owns the dish OR admin
+      allow update, delete: if isAuthenticated() && (
+        (resource.data.cookId == request.auth.uid && isCook()) ||
+        isAdmin()
+      );
     }
     
-    // ===================
-    // REVIEWS
-    // ===================
+    // ═════════════════════════════════════════════════════════════════════
+    // 📝 REVIEWS - Customer-Only Creation
+    // ═════════════════════════════════════════════════════════════════════
     match /reviews/{reviewId} {
       // Read: Anyone authenticated
       allow read: if isAuthenticated();
       
-      // Write: Only the customer who wrote the review
+      // Create: Only customers who placed the order
       allow create: if isAuthenticated() && 
+        isCustomer() &&
         request.resource.data.customerId == request.auth.uid;
       
-      allow update, delete: if isAuthenticated() && 
-        resource.data.customerId == request.auth.uid;
+      // Update/Delete: Only the review author OR admin
+      allow update, delete: if isAuthenticated() && (
+        (resource.data.customerId == request.auth.uid && isCustomer()) ||
+        isAdmin()
+      );
     }
     
-    // ===================
-    // CHATS
-    // ===================
+    // ═════════════════════════════════════════════════════════════════════
+    // 📧 VERIFICATION REQUESTS - Cook Verification System
+    // ═════════════════════════════════════════════════════════════════════
+    match /verifications/{verificationId} {
+      // Read: The cook who submitted OR admin
+      allow read: if isAuthenticated() && (
+        resource.data.cookId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Create: Only cooks can submit verification
+      allow create: if isAuthenticated() && 
+        isCook() &&
+        request.resource.data.cookId == request.auth.uid;
+      
+      // Update: Only admin can approve/reject
+      allow update: if isAdmin();
+      
+      // Delete: Only admin
+      allow delete: if isAdmin();
+    }
+    
+    // ═════════════════════════════════════════════════════════════════════
+    // 💬 CHATS - Participant-Only Access
+    // ═════════════════════════════════════════════════════════════════════
     match /chats/{chatId} {
       // Read: Only participants
       allow read: if isAuthenticated() && (
@@ -145,57 +228,76 @@ service cloud.firestore {
       
       // Messages subcollection
       match /messages/{messageId} {
-        // Read: Anyone who can read the chat
         allow read: if isAuthenticated();
-        
-        // Create: Only participants can send messages
         allow create: if isAuthenticated() && (
           request.resource.data.senderId == request.auth.uid
         );
       }
     }
     
-    // ===================
-    // ADDRESSES
-    // ===================
+    // ═════════════════════════════════════════════════════════════════════
+    // 📍 ADDRESSES - User-Only Access
+    // ═════════════════════════════════════════════════════════════════════
     match /addresses/{addressId} {
-      // Read/Write: Only the owner
-      allow read, write: if isAuthenticated() && 
+      allow read: if isAuthenticated() && 
         resource.data.userId == request.auth.uid;
         
       allow create: if isAuthenticated() && 
         request.resource.data.userId == request.auth.uid;
+        
+      allow update, delete: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
     }
     
-    // ===================
-    // DELIVERIES (if you have a separate collection)
-    // ===================
+    // ═════════════════════════════════════════════════════════════════════
+    // 🚚 DELIVERIES - Real-time Tracking Data
+    // ═════════════════════════════════════════════════════════════════════
     match /deliveries/{deliveryId} {
-      // Read: Customer, Cook, or Rider
+      // Read: Customer, Cook, Rider, or Admin
       allow read: if isAuthenticated();
       
-      // Write: Rider only
-      allow write: if isAuthenticated();
+      // Write: Only assigned rider OR admin can update delivery data
+      allow create, update: if isAuthenticated() && (
+        isRider() ||
+        isAdmin()
+      );
+      
+      // Delete: Only admin
+      allow delete: if isAdmin();
     }
     
-    // ===================
-    // NOTIFICATIONS (Real-time delivery notifications)
-    // ===================
+    // ═════════════════════════════════════════════════════════════════════
+    // 🔔 NOTIFICATIONS - Recipient-Only Access
+    // ═════════════════════════════════════════════════════════════════════
     match /notifications/{notificationId} {
-      // Read: Only the recipient can read their notifications
       allow read: if isAuthenticated() && 
         resource.data.recipientId == request.auth.uid;
       
-      // Create: Any authenticated user can create notifications
       allow create: if isAuthenticated();
       
-      // Update: Only the recipient can mark as read
       allow update: if isAuthenticated() && 
         resource.data.recipientId == request.auth.uid;
       
-      // Delete: Only the recipient can delete
-      allow delete: if isAuthenticated() && 
-        resource.data.recipientId == request.auth.uid;
+      allow delete: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+    
+    // ═════════════════════════════════════════════════════════════════════
+    // 🔧 ADMIN-ONLY COLLECTIONS
+    // ═════════════════════════════════════════════════════════════════════
+    match /analytics/{document=**} {
+      allow read, write: if isAdmin();
+    }
+    
+    match /config/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /notification_errors/{document=**} {
+      allow read, write: if isAdmin();
     }
     
     // ===================

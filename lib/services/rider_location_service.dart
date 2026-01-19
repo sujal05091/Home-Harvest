@@ -4,15 +4,20 @@ import 'package:geolocator/geolocator.dart';
 import '../models/rider_location_model.dart';
 
 /// Real-Time Rider Location Service (Swiggy/Zomato Style)
-/// Handles continuous GPS updates every 3-5 seconds
+/// Handles continuous GPS updates with validation and safety checks
 class RiderLocationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   StreamSubscription<Position>? _positionSubscription;
   Timer? _updateTimer;
   
   static const String COLLECTION = 'rider_locations';
-  static const int UPDATE_INTERVAL_SECONDS = 4; // 4 seconds like Swiggy
-  static const double MIN_DISTANCE_METERS = 5; // Only update if moved 5+ meters
+  static const int UPDATE_INTERVAL_SECONDS = 5; // 5 seconds
+  static const double MIN_DISTANCE_METERS = 10; // Only update if moved 10+ meters
+  static const double MAX_SPEED_KMH = 120; // Max realistic speed (km/h)
+  static const double MAX_JUMP_METERS = 200; // Max instant location jump
+
+  Position? _lastValidPosition;
+  DateTime? _lastUpdateTime;
 
   /// Start real-time location tracking for rider
   /// Called when rider accepts a delivery
@@ -32,8 +37,6 @@ class RiderLocationService {
     // Stop any existing tracking
     await stopTracking(riderId);
 
-    Position? lastPosition;
-
     // Start continuous GPS stream
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
@@ -43,11 +46,17 @@ class RiderLocationService {
       ),
     ).listen(
       (Position position) async {
+        // Validate GPS position (prevent teleporting/spoofing)
+        if (!_isValidPosition(position)) {
+          print('⚠️ Invalid GPS position detected - ignoring update');
+          return;
+        }
+
         // Check if moved significantly
-        if (lastPosition != null) {
+        if (_lastValidPosition != null) {
           final distance = Geolocator.distanceBetween(
-            lastPosition!.latitude,
-            lastPosition!.longitude,
+            _lastValidPosition!.latitude,
+            _lastValidPosition!.longitude,
             position.latitude,
             position.longitude,
           );
@@ -58,7 +67,9 @@ class RiderLocationService {
           }
         }
 
-        lastPosition = position;
+        // Update last valid position
+        _lastValidPosition = position;
+        _lastUpdateTime = DateTime.now();
 
         // Create location model
         final locationModel = RiderLocationModel(
@@ -189,6 +200,50 @@ class RiderLocationService {
       print('❌ Error saving location: $e');
       // Don't rethrow to avoid breaking tracking
     }
+  }
+
+  /// Validate GPS position to prevent teleporting and spoofing
+  /// Returns false if position is suspicious
+  bool _isValidPosition(Position position) {
+    // First position is always valid
+    if (_lastValidPosition == null || _lastUpdateTime == null) {
+      return true;
+    }
+
+    // Calculate distance from last valid position
+    final distance = Geolocator.distanceBetween(
+      _lastValidPosition!.latitude,
+      _lastValidPosition!.longitude,
+      position.latitude,
+      position.longitude,
+    );
+
+    // Check for GPS jumps (teleportation)
+    if (distance > MAX_JUMP_METERS) {
+      print('⚠️ GPS JUMP DETECTED: ${distance.toStringAsFixed(1)}m instant movement');
+      return false;
+    }
+
+    // Calculate time delta
+    final timeDelta = position.timestamp.difference(_lastUpdateTime!).inSeconds;
+    if (timeDelta == 0) return true; // Avoid division by zero
+
+    // Calculate speed (m/s to km/h)
+    final speedKmh = (distance / timeDelta) * 3.6;
+
+    // Check for unrealistic speed
+    if (speedKmh > MAX_SPEED_KMH) {
+      print('⚠️ UNREALISTIC SPEED: ${speedKmh.toStringAsFixed(1)} km/h (max: $MAX_SPEED_KMH km/h)');
+      return false;
+    }
+
+    // Additional checks
+    if (position.accuracy > 50) {
+      print('⚠️ LOW GPS ACCURACY: ${position.accuracy.toStringAsFixed(1)}m');
+      return false;
+    }
+
+    return true;
   }
 
   /// Check location permission
