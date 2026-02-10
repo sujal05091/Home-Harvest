@@ -14,6 +14,7 @@ import 'providers/rider_provider.dart';
 import 'providers/favorites_provider.dart';
 import 'services/notification_service.dart';
 import 'services/fcm_service.dart';
+import 'widgets/app_background.dart';
 
 // TODO: Replace with your Firebase configuration
 // Download google-services.json (Android) and GoogleService-Info.plist (iOS)
@@ -219,13 +220,16 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider(create: (_) => RiderProvider()),
         ChangeNotifierProvider(create: (_) => FavoritesProvider()),
       ],
-      child: MaterialApp(
-        title: 'HomeHarvest',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        navigatorKey: MyApp.navigatorKey,
-        initialRoute: AppRouter.splash,
-        onGenerateRoute: AppRouter.generateRoute,
+      child: AppBackground(
+        showImage: true,
+        child: MaterialApp(
+          title: 'HomeHarvest',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          navigatorKey: MyApp.navigatorKey,
+          initialRoute: AppRouter.splash,
+          onGenerateRoute: AppRouter.generateRoute,
+        ),
       ),
     );
   }

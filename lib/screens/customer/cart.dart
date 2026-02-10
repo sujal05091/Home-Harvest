@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:latlong2/latlong.dart';
 import '../../providers/orders_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dishes_provider.dart';
@@ -9,7 +11,9 @@ import '../../models/address_model.dart';
 import '../../models/dish_model.dart';
 import '../../app_router.dart';
 import '../../services/delivery_charge_service.dart';
+import '../../services/pricing_service.dart';
 import '../../services/fcm_service.dart';
+import '../../services/route_service.dart';
 import 'select_address.dart';
 
 class CartScreen extends StatefulWidget {
@@ -24,7 +28,16 @@ class _CartScreenState extends State<CartScreen> {
   DishModel? _firstDish;
   double? _deliveryCharge;
   double? _distance;
+  double? _riderEarning;
+  double? _platformCommission;
   bool _isLoadingDetails = false;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,25 +45,73 @@ class _CartScreenState extends State<CartScreen> {
 
     if (ordersProvider.cartItems.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Cart')),
-        body: Center(
+        body: SafeArea(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Lottie.asset(
-                'assets/lottie/empty_cart.json',
-                width: 250,
-                height: 250,
+              // Header
+              Container(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, size: 22),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      const Expanded(
+                        child: Text(
+                          'My Cart',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'Your cart is empty',
-                style: TextStyle(fontSize: 18, color: Colors.grey),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Browse Dishes'),
+              // Empty State
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Lottie.asset(
+                        'assets/lottie/empty_cart.json',
+                        width: 250,
+                        height: 250,
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Your cart is empty',
+                        style: TextStyle(fontSize: 18, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFC8019),
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Browse Dishes', style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -59,179 +120,456 @@ class _CartScreenState extends State<CartScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Cart')),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              itemCount: ordersProvider.cartItems.length,
-              itemBuilder: (context, index) {
-                final item = ordersProvider.cartItems[index];
-                return ListTile(
-                  title: Text(item.dishName),
-                  subtitle: Text('₹${item.price} x ${item.quantity}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () => ordersProvider.removeFromCart(item.dishId),
-                  ),
-                );
-              },
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(color: Colors.grey.shade300, blurRadius: 5)
-              ],
-            ),
-            child: Column(
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Column(
               children: [
-                // Item Total
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Item Total:', style: TextStyle(fontSize: 16)),
-                    Text(
-                      '₹${ordersProvider.cartTotal.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ],
-                ),
-                
-                // Delivery Charge (if address selected)
-                if (_deliveryCharge != null) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Text('Delivery Charge:', style: TextStyle(fontSize: 16)),
-                          if (_distance != null) ...[
-                            const SizedBox(width: 4),
-                            Text(
-                              '(${DeliveryChargeService.getFormattedDistance(_distance!)})',
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                            ),
-                          ],
-                        ],
-                      ),
-                      Text(
-                        '₹${_deliveryCharge!.toStringAsFixed(0)}',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 20),
-                  // Grand Total
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Total to Pay:',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        '₹${(ordersProvider.cartTotal + _deliveryCharge!).toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFFFC8019),
-                        ),
-                      ),
-                    ],
-                  ),
-                ] else ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _selectedAddress == null
-                        ? 'Select address to see delivery charge'
-                        : 'Calculating delivery charge...',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ],
-                
-                const SizedBox(height: 16),
-                
-                // Select Address Button (if no address selected)
-                if (_selectedAddress == null)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.location_on),
-                      label: const Text('Select Delivery Address'),
-                      onPressed: _selectAddress,
-                    ),
-                  )
-                else ...[
-                  // Show selected address
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.shade200),
-                    ),
+                // Header
+                Container(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.location_on, color: Colors.green.shade700, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _selectedAddress!.label,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green.shade700,
-                                ),
-                              ),
-                              Text(
-                                _selectedAddress!.fullAddress,
-                                style: const TextStyle(fontSize: 12),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back, size: 22),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        const Expanded(
+                          child: Text(
+                            'My Cart',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                        TextButton(
-                          onPressed: _selectAddress,
-                          child: const Text('Change'),
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  // Place Order Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isLoadingDetails || _deliveryCharge == null
-                          ? null
-                          : _placeOrder,
-                      child: _isLoadingDetails
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Place Order'),
+                ),
+                // Scrollable Content
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 30),
+                          // Discount Banner
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                height: 180,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Stack(
+                                  children: [
+                                    // Background Image (placeholder gradient)
+                                    Container(
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            const Color(0xFFFC8019).withOpacity(0.7),
+                                            const Color(0xFFFC8019).withOpacity(0.3),
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                      ),
+                                    ),
+                                    // Gradient Overlay
+                                    Container(
+                                      width: double.infinity,
+                                      height: 180,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.black.withOpacity(0),
+                                            Colors.black.withOpacity(0.75),
+                                          ],
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                        ),
+                                      ),
+                                    ),
+                                    // Content
+                                    Padding(
+                                      padding: const EdgeInsets.all(17),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                                        children: [
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'FoodCort Discount',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: const Color(0xFFFC8019),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              RichText(
+                                                text: TextSpan(
+                                                  style: const TextStyle(
+                                                    fontSize: 16,
+                                                    color: Colors.white,
+                                                  ),
+                                                  children: [
+                                                    const TextSpan(
+                                                      text: '40% discount for purchases over ',
+                                                      style: TextStyle(fontWeight: FontWeight.w500),
+                                                    ),
+                                                    TextSpan(
+                                                      text: '\$30',
+                                                      style: TextStyle(
+                                                        fontSize: 18,
+                                                        color: const Color(0xFFFC8019),
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                    const TextSpan(
+                                                      text: ', valid for today only',
+                                                      style: TextStyle(fontWeight: FontWeight.w500),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Row(
+                                            children: [
+                                              ElevatedButton(
+                                                onPressed: () {},
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.white.withOpacity(0.01),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                                  elevation: 0,
+                                                  side: BorderSide(color: Colors.grey[100]!, width: 1),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(30),
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  'Get Discount',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          // Cart Items Section
+                          Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 24),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Your Order',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      child: const Text(
+                                        'See All',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFFFC8019),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              // Cart Items
+                              ...ordersProvider.cartItems.map((item) => _buildCartItem(item, ordersProvider)).toList(),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
+                ),
+                // Bottom Section (Order Total + Checkout)
+                Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Order Total',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          RichText(
+                            text: TextSpan(
+                              style: const TextStyle(fontSize: 16),
+                              children: [
+                                TextSpan(
+                                  text: '\$ ',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: const Color(0xFFFC8019),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: ordersProvider.cartTotal.toStringAsFixed(2),
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: () => _navigateToCheckout(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFC8019),
+                            disabledBackgroundColor: Colors.grey[300],
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Checkout',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // 📍 SELECT DELIVERY ADDRESS
+  // Build Cart Item Card
+  Widget _buildCartItem(OrderItem item, OrdersProvider ordersProvider) {
+    final dishesProvider = Provider.of<DishesProvider>(context, listen: false);
+    
+    return FutureBuilder<DishModel?>(
+      future: dishesProvider.getDishById(item.dishId),
+      builder: (context, snapshot) {
+        final dish = snapshot.data;
+        
+        return Padding(
+          padding: const EdgeInsets.only(left: 24, right: 24, bottom: 16),
+          child: Row(
+            children: [
+              // Item Image
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: dish?.imageUrl != null
+                      ? CachedNetworkImage(
+                          imageUrl: dish!.imageUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: Colors.grey[200],
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: Colors.grey[200],
+                            child: const Icon(Icons.restaurant, color: Colors.grey),
+                          ),
+                        )
+                      : Container(
+                          color: Colors.grey[200],
+                          child: const Icon(Icons.restaurant, color: Colors.grey),
+                        ),
+                ),
+              ),
+          const SizedBox(width: 10),
+              // Item Details
+              Expanded(
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            item.dishName,
+                            maxLines: 2,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Price
+                        Flexible(
+                          child: RichText(
+                            text: TextSpan(
+                              style: const TextStyle(fontSize: 16),
+                              children: [
+                                TextSpan(
+                                  text: '\$ ',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: const Color(0xFFFC8019),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: item.price.toStringAsFixed(2),
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            maxLines: 2,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // Quantity Controller
+                        Container(
+                          width: 120,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: Colors.grey[300]!,
+                              width: 2,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              // Decrement Button
+                              GestureDetector(
+                                onTap: () {
+                                  if (item.quantity > 1) {
+                                    ordersProvider.updateCartItemQuantity(item.dishId, item.quantity - 1);
+                                  }
+                                },
+                                child: Icon(
+                                  Icons.remove,
+                                  color: item.quantity > 1 ? Colors.black : Colors.grey[400],
+                                  size: 20,
+                                ),
+                              ),
+                              // Count Display
+                              Text(
+                                item.quantity.toString(),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              // Increment Button
+                              GestureDetector(
+                                onTap: () {
+                                  ordersProvider.updateCartItemQuantity(item.dishId, item.quantity + 1);
+                                },
+                                child: const Icon(
+                                  Icons.add,
+                                  color: Colors.black,
+                                  size: 20,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // � NAVIGATE TO CHECKOUT
+  void _navigateToCheckout() {
+    Navigator.pushNamed(context, AppRouter.checkout);
+  }
+
+  // �📍 SELECT DELIVERY ADDRESS
   Future<void> _selectAddress() async {
     final address = await Navigator.push<AddressModel>(
       context,
@@ -266,16 +604,40 @@ class _CartScreenState extends State<CartScreen> {
         throw Exception('Failed to load details');
       }
 
-      // Calculate delivery distance and charge
-      final deliveryDetails = DeliveryChargeService.calculateDeliveryDetails(
-        dish.location, // Cook's location (pickup)
-        _selectedAddress!.location, // Customer's address (drop)
+      // 🗺️ Calculate ACTUAL ROAD DISTANCE using OSRM (not straight line!)
+      final pickupLocation = LatLng(
+        dish.location.latitude, 
+        dish.location.longitude,
+      );
+      final dropLocation = LatLng(
+        _selectedAddress!.location.latitude,
+        _selectedAddress!.location.longitude,
+      );
+      
+      // Fetch route info with real road distance from OSRM API
+      final routeInfo = await RouteService.getRouteInfo(
+        start: pickupLocation,
+        end: dropLocation,
+      );
+      
+      print('🚗 [Cart] OSRM Route: ${routeInfo.distanceInKm.toStringAsFixed(2)} km (${routeInfo.distanceInMeters.toStringAsFixed(0)} meters)');
+      
+      final distanceKm = routeInfo.distanceInKm; // Use actual road distance in KM
+      
+      // 💰 Calculate delivery pricing with rider earnings (using ROAD distance)
+      // Normal food order: distanceKm × ₹8
+      final pricingService = PricingService();
+      final pricing = await pricingService.calculateDeliveryCharge(
+        distanceKm,
+        orderType: OrderType.NORMAL_FOOD,
       );
 
       setState(() {
         _firstDish = dish;
-        _distance = deliveryDetails['distance'];
-        _deliveryCharge = deliveryDetails['charge'];
+        _distance = distanceKm; // Store road distance in kilometers
+        _deliveryCharge = pricing['deliveryCharge'];
+        _riderEarning = pricing['riderEarning'];
+        _platformCommission = pricing['platformCommission'];
         _isLoadingDetails = false;
       });
     } catch (e) {
@@ -326,6 +688,15 @@ class _CartScreenState extends State<CartScreen> {
         dropAddress: _selectedAddress!.fullAddress,
         dropLocation: _selectedAddress!.location,
         createdAt: DateTime.now(),
+        // 💰 NEW PRODUCTION FIELDS
+        isActive: false, // Will be set true when rider accepts
+        distanceKm: _distance!,
+        deliveryCharge: _deliveryCharge!,
+        riderEarning: _riderEarning!,
+        platformCommission: _platformCommission!,
+        cashCollected: null,
+        pendingSettlement: null,
+        isSettled: false,
       );
 
       print('📦 [Cart] Creating order...');
@@ -359,15 +730,22 @@ class _CartScreenState extends State<CartScreen> {
           AppRouter.findingPartner,
           arguments: {'orderId': orderId},
         );
+        
+        // Clear cart after successful order placement
+        ordersProvider.clearCart();
+        print('✅ [Cart] Order process complete!');
       } else {
-        print('❌ [Cart] Order ID is null or widget not mounted!');
+        throw Exception('Failed to create order');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [Cart] Error placing order: $e');
+      print('   Stack trace: $stackTrace');
+      
       setState(() => _isLoadingDetails = false);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to place order: $e')),
+          SnackBar(content: Text('Error placing order: $e')),
         );
       }
     }

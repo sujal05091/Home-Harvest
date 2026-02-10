@@ -300,6 +300,69 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
     
+    // ═════════════════════════════════════════════════════════════════════
+    // 💰 RIDER WALLETS - Rider & Admin Only
+    // ═════════════════════════════════════════════════════════════════════
+    match /rider_wallets/{riderId} {
+      // Read: Only the rider or admin
+      allow read: if isAuthenticated() && (
+        request.auth.uid == riderId ||
+        isAdmin()
+      );
+      
+      // Create: System or admin only (prevent manual wallet creation)
+      allow create: if isAdmin();
+      
+      // Update: Only through Cloud Functions or admin
+      // Riders CANNOT directly update their wallet balance
+      allow update: if isAdmin();
+      
+      // Delete: Admin only
+      allow delete: if isAdmin();
+    }
+    
+    // ═════════════════════════════════════════════════════════════════════
+    // 💳 WALLET TRANSACTIONS - Read-Only for Riders
+    // ═════════════════════════════════════════════════════════════════════
+    match /wallet_transactions/{transactionId} {
+      // Read: Only the rider who owns the transaction or admin
+      allow read: if isAuthenticated() && (
+        resource.data.riderId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Create: System only (Cloud Functions)
+      allow create: if false;
+      
+      // Update/Delete: Admin only
+      allow update, delete: if isAdmin();
+    }
+    
+    // ═════════════════════════════════════════════════════════════════════
+    // 💸 WITHDRAWAL REQUESTS - Rider creates, Admin approves
+    // ═════════════════════════════════════════════════════════════════════
+    match /withdrawal_requests/{requestId} {
+      // Read: Only the requesting rider or admin
+      allow read: if isAuthenticated() && (
+        resource.data.riderId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Create: Only riders can create withdrawal requests
+      allow create: if isAuthenticated() && 
+        isRider() &&
+        request.resource.data.riderId == request.auth.uid &&
+        request.resource.data.status == 'PENDING' &&
+        request.resource.data.amount >= 100 &&  // Minimum ₹100
+        request.resource.data.amount <= 50000;  // Maximum ₹50,000
+      
+      // Update: Only admin (for approval/rejection)
+      allow update: if isAdmin();
+      
+      // Delete: Admin only
+      allow delete: if isAdmin();
+    }
+    
     // ===================
     // DEFAULT: Deny all
     // ===================

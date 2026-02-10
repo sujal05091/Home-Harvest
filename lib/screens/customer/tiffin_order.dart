@@ -3,12 +3,10 @@ import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
-import '../../services/delivery_charge_service.dart';
-import '../../services/fcm_service.dart';
 import '../../models/address_model.dart';
-import '../../models/order_model.dart';
 import '../../app_router.dart';
-import 'package:uuid/uuid.dart';
+import 'tiffin_checkout.dart';
+import 'select_address.dart';
 
 /// 🏠→🏢 HOME-TO-OFFICE TIFFIN DELIVERY SCREEN
 /// 
@@ -32,17 +30,37 @@ class TiffinOrderScreen extends StatefulWidget {
 class _TiffinOrderScreenState extends State<TiffinOrderScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   
-  AddressModel? _homeAddress;
-  AddressModel? _officeAddress;
-  TimeOfDay? _selectedTime;
+  AddressModel? _pickupAddress;
+  AddressModel? _deliveryAddress;
   
   bool _isLoading = false;
   List<AddressModel> _savedAddresses = [];
+  bool _isHowItWorksExpanded = false;
 
   @override
   void initState() {
     super.initState();
     _loadAddresses();
+  }
+
+  /// Navigate to Tiffin Checkout
+  void _proceedToCheckout() {
+    if (_pickupAddress == null || _deliveryAddress == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select both addresses')),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TiffinCheckoutScreen(
+          homeAddress: _pickupAddress!,
+          officeAddress: _deliveryAddress!,
+        ),
+      ),
+    );
   }
 
   /// Load customer's saved addresses
@@ -56,14 +74,12 @@ class _TiffinOrderScreenState extends State<TiffinOrderScreen> {
         if (mounted) {
           setState(() => _savedAddresses = addresses);
           
-          // Auto-select if addresses exist
-          for (var addr in addresses) {
-            if (addr.label == 'Home' && _homeAddress == null) {
-              _homeAddress = addr;
-            }
-            if (addr.label == 'Office' && _officeAddress == null) {
-              _officeAddress = addr;
-            }
+          // Auto-select first two addresses if available
+          if (addresses.isNotEmpty && _pickupAddress == null) {
+            _pickupAddress = addresses.first;
+          }
+          if (addresses.length > 1 && _deliveryAddress == null) {
+            _deliveryAddress = addresses[1];
           }
         }
         setState(() {});
@@ -74,531 +90,524 @@ class _TiffinOrderScreenState extends State<TiffinOrderScreen> {
     }
   }
 
-  /// Select Time picker
-  Future<void> _selectTime() async {
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFFFC8019),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    
-    if (picked != null) {
-      setState(() => _selectedTime = picked);
-    }
-  }
 
-  /// Show address selection dialog
+
+  /// Navigate to address selection screen
   Future<void> _showAddressSelection(String type) async {
-    final selected = await showModalBottomSheet<AddressModel>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    final selected = await Navigator.push<AddressModel>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SelectAddressScreen(),
       ),
-      builder: (context) {
-        final typeAddresses = _savedAddresses.where((a) => a.label == type).toList();
-        
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Select $type Address',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle, color: Color(0xFFFC8019)),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, AppRouter.addAddress);
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (typeAddresses.isEmpty)
-                Center(
-                  child: Column(
-                    children: [
-                      const Icon(Icons.location_off, size: 60, color: Colors.grey),
-                      const SizedBox(height: 10),
-                      Text('No $type address saved'),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          Navigator.pushNamed(context, AppRouter.addAddress);
-                        },
-                        child: const Text('Add Address'),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                ...typeAddresses.map((addr) => ListTile(
-                      leading: const Icon(Icons.location_on, color: Color(0xFFFC8019)),
-                      title: Text(addr.label),
-                      subtitle: Text(addr.fullAddress),
-                      onTap: () => Navigator.pop(context, addr),
-                    )),
-            ],
-          ),
-        );
-      },
     );
 
     if (selected != null) {
       setState(() {
-        if (type == 'Home') {
-          _homeAddress = selected;
+        if (type == 'Pickup') {
+          _pickupAddress = selected;
         } else {
-          _officeAddress = selected;
+          _deliveryAddress = selected;
         }
       });
-    }
-  }
-
-  /// Place Home-to-Office Tiffin Order
-  Future<void> _placeTiffinOrder() async {
-    print('🏠 [TiffinOrder] _placeTiffinOrder() called');
-    
-    // Validation
-    if (_homeAddress == null) {
-      print('❌ [TiffinOrder] Missing home address');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select Home address')),
-      );
-      return;
-    }
-
-    if (_officeAddress == null) {
-      print('❌ [TiffinOrder] Missing office address');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select Office address')),
-      );
-      return;
-    }
-
-    if (_selectedTime == null) {
-      print('❌ [TiffinOrder] Missing delivery time');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select delivery time')),
-      );
-      return;
-    }
-
-    print('🔄 [TiffinOrder] Validation passed, creating order...');
-    setState(() => _isLoading = true);
-
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-      // Calculate delivery charge based on distance
-      final deliveryDetails = DeliveryChargeService.calculateDeliveryDetails(
-        _homeAddress!.location, // Pickup (home)
-        _officeAddress!.location, // Drop (office)
-      );
-
-      final deliveryCharge = deliveryDetails['charge']!;
-      final distance = deliveryDetails['distance']!;
-
-      // Create preferred time (today with selected time)
-      final now = DateTime.now();
-      final preferredTime = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        _selectedTime!.hour,
-        _selectedTime!.minute,
-      );
-
-      // Create Home-to-Office Order
-      final order = OrderModel(
-        orderId: const Uuid().v4(),
-        customerId: authProvider.currentUser!.uid,
-        customerName: authProvider.currentUser!.name,
-        customerPhone: authProvider.currentUser!.phone,
-        cookId: authProvider.currentUser!.uid, // Self (family member)
-        cookName: '${authProvider.currentUser!.name}\'s Family',
-        dishItems: [
-          // No specific dishes - it's home-cooked by family
-          OrderItem(
-            dishId: 'tiffin',
-            dishName: 'Home-Cooked Tiffin (${DeliveryChargeService.getFormattedDistance(distance)})',
-            price: 0.0, // No charge for food (family made)
-            quantity: 1,
-          ),
-        ],
-        total: deliveryCharge, // Distance-based delivery fee only
-        paymentMethod: 'COD',
-        status: OrderStatus.PLACED,
-        isHomeToOffice: true, // 🔥 KEY FLAG
-        pickupAddress: _homeAddress!.fullAddress,
-        pickupLocation: _homeAddress!.location,
-        dropAddress: _officeAddress!.fullAddress,
-        dropLocation: _officeAddress!.location,
-        preferredTime: preferredTime,
-        createdAt: DateTime.now(),
-      );
-
-      // Save order to Firestore
-      print('📦 [TiffinOrder] Creating order...');
-      final savedOrderId = await _firestoreService.createOrder(order);
-      print('📦 [TiffinOrder] Order created with ID: $savedOrderId');
-
-      // 🚀 NOTIFY NEARBY RIDERS VIA FCM
-      if (savedOrderId != null) {
-        try {
-          print('🚀 [TiffinOrder] Starting FCM notification process for order: $savedOrderId');
-          print('📍 [TiffinOrder] Pickup location (Home): ${_homeAddress!.location.latitude}, ${_homeAddress!.location.longitude}');
-          
-          await FCMService().notifyNearbyRiders(
-            orderId: savedOrderId,
-            pickupLat: _homeAddress!.location.latitude,
-            pickupLng: _homeAddress!.location.longitude,
-            radiusKm: 5.0,
-          );
-          
-          print('✅ [TiffinOrder] FCM notifications sent to nearby riders');
-        } catch (e, stackTrace) {
-          print('⚠️ [TiffinOrder] FCM notification failed: $e');
-          print('📋 [TiffinOrder] Stack trace: $stackTrace');
-        }
-      } else {
-        print('❌ [TiffinOrder] Order ID is null, cannot send notifications');
-      }
-
-      if (mounted) {
-        setState(() => _isLoading = false);
-        
-        // Show success dialog briefly, then auto-navigate to tracking
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Lottie.asset('assets/lottie/order_placed.json', height: 150),
-                const SizedBox(height: 16),
-                const Text(
-                  'Tiffin Order Placed!',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Delivery at ${_selectedTime!.format(context)}',
-                  style: const TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Finding delivery partner...',
-                  style: TextStyle(color: Colors.green, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        );
-
-        // Auto-navigate to finding partner screen after 2 seconds
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pop(context); // Close dialog
-            Navigator.pushReplacementNamed(
-              context,
-              AppRouter.findingPartner,  // Fixed: Use proper route constant
-              arguments: {'orderId': savedOrderId},
-            );
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Home-to-Office Tiffin'),
-        backgroundColor: const Color(0xFFFC8019),
-      ),
-      body: _isLoading
-          ? Center(
-              child: Lottie.asset('assets/lottie/loading_auth.json', height: 150),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: _isLoading
+            ? Center(
+                child: Lottie.asset('assets/lottie/loading_auth.json', height: 150),
+              )
+            : Column(
                 children: [
-                  // Header Info
+                  // Header
                   Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Lottie.asset(
-                          'assets/lottie/delivery motorbike.json',
-                          height: 80,
-                          width: 80,
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '🏠 → 🏢 Tiffin Delivery',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'Your family prepares, we deliver to your office!',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // 🏠 HOME ADDRESS SELECTION
-                  const Text(
-                    '1️⃣ Pickup Location (Home)',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.home, color: Colors.green),
-                      title: Text(
-                        _homeAddress?.label ?? 'Select Home Address',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                      subtitle: _homeAddress != null
-                          ? Text(_homeAddress!.fullAddress)
-                          : const Text('Where food will be picked up'),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: () => _showAddressSelection('Home'),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // 🏢 OFFICE ADDRESS SELECTION
-                  const Text(
-                    '2️⃣ Delivery Location (Office)',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.business, color: Colors.blue),
-                      title: Text(
-                        _officeAddress?.label ?? 'Select Office Address',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                      subtitle: _officeAddress != null
-                          ? Text(_officeAddress!.fullAddress)
-                          : const Text('Where you want it delivered'),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: () => _showAddressSelection('Office'),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ⏰ TIME SELECTION
-                  const Text(
-                    '3️⃣ Preferred Delivery Time',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.access_time, color: Color(0xFFFC8019)),
-                      title: Text(
-                        _selectedTime != null
-                            ? _selectedTime!.format(context)
-                            : 'Select Time',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                      subtitle: const Text('When do you want it delivered?'),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: _selectTime,
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Delivery Fee Info
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.shade200),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.green),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Delivery Fee: ₹50',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'No food charges - it\'s home-cooked by your family!',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Place Order Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _placeTiffinOrder,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFC8019),
-                        padding: const EdgeInsets.all(16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Place Tiffin Order',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // How it works
-                  const Card(
                     child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'How it works:',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back, size: 22),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          const Expanded(
+                            child: Text(
+                              'Home-to-Office Tiffin',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                          SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.green, size: 20),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text('Your family prepares fresh food at home'),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.green, size: 20),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text('Rider picks up packed tiffin from your home'),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.green, size: 20),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text('Delivered to your office on time'),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.green, size: 20),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text('Track rider in real-time'),
-                              ),
-                            ],
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              shape: BoxShape.circle,
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ),
+
+                  // Scrollable Content
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 24),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 10),
+
+                            // Lottie Animation
+                            Center(
+                              child: Lottie.asset(
+                                'assets/lottie/home-to-tiffin.json',
+                                height: 200,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // PICKUP LOCATION BUTTON
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: GestureDetector(
+                                onTap: () => _showAddressSelection('Pickup'),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    gradient: _pickupAddress != null
+                                        ? const LinearGradient(
+                                            colors: [Color(0xFF4CAF50), Color(0xFF45A049)],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          )
+                                        : null,
+                                    color: _pickupAddress == null ? Colors.grey[200] : null,
+                                    borderRadius: BorderRadius.circular(20),
+                                    boxShadow: _pickupAddress != null
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xFF4CAF50).withOpacity(0.3),
+                                              blurRadius: 12,
+                                              offset: const Offset(0, 6),
+                                            ),
+                                          ]
+                                        : [],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      // Icon
+                                      Container(
+                                        width: 60,
+                                        height: 60,
+                                        decoration: BoxDecoration(
+                                          color: _pickupAddress != null
+                                              ? Colors.white.withOpacity(0.3)
+                                              : Colors.white,
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                        child: Icon(
+                                          Icons.home_rounded,
+                                          size: 32,
+                                          color: _pickupAddress != null ? Colors.white : const Color(0xFF4CAF50),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      // Location Details
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  'Pickup Location',
+                                                  style: TextStyle(
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: _pickupAddress != null ? Colors.white : Colors.grey[800],
+                                                    letterSpacing: 0.3,
+                                                  ),
+                                                ),
+                                                if (_pickupAddress != null) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white.withOpacity(0.25),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                    child: const Text(
+                                                      '\u2713',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              _pickupAddress?.fullAddress ?? 'Tap to select your home address',
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: _pickupAddress != null 
+                                                    ? Colors.white.withOpacity(0.85) 
+                                                    : Colors.grey[600],
+                                                height: 1.3,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Icon(
+                                        Icons.arrow_forward_ios,
+                                        size: 20,
+                                        color: _pickupAddress != null ? Colors.white : Colors.grey[400],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // DELIVERY LOCATION BUTTON
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: GestureDetector(
+                                onTap: () => _showAddressSelection('Delivery'),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    gradient: _deliveryAddress != null
+                                        ? const LinearGradient(
+                                            colors: [Color(0xFFFF6B35), Color(0xFFFC8019)],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          )
+                                        : null,
+                                    color: _deliveryAddress == null ? Colors.grey[200] : null,
+                                    borderRadius: BorderRadius.circular(20),
+                                    boxShadow: _deliveryAddress != null
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xFFFC8019).withOpacity(0.3),
+                                              blurRadius: 12,
+                                              offset: const Offset(0, 6),
+                                            ),
+                                          ]
+                                        : [],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      // Icon
+                                      Container(
+                                        width: 60,
+                                        height: 60,
+                                        decoration: BoxDecoration(
+                                          color: _deliveryAddress != null
+                                              ? Colors.white.withOpacity(0.3)
+                                              : Colors.white,
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                        child: Icon(
+                                          Icons.work_rounded,
+                                          size: 32,
+                                          color: _deliveryAddress != null ? Colors.white : const Color(0xFFFC8019),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      // Location Details
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  'Delivery Location',
+                                                  style: TextStyle(
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: _deliveryAddress != null ? Colors.white : Colors.grey[800],
+                                                    letterSpacing: 0.3,
+                                                  ),
+                                                ),
+                                                if (_deliveryAddress != null) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white.withOpacity(0.25),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                    child: const Text(
+                                                      '\u2713',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              _deliveryAddress?.fullAddress ?? 'Tap to select your office address',
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: _deliveryAddress != null 
+                                                    ? Colors.white.withOpacity(0.85) 
+                                                    : Colors.grey[600],
+                                                height: 1.3,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Icon(
+                                        Icons.arrow_forward_ios,
+                                        size: 20,
+                                        color: _deliveryAddress != null ? Colors.white : Colors.grey[400],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 30),
+
+                            // How it works Section (Collapsible)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[50],
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Column(
+                                  children: [
+                                    // Header - Always visible with dropdown arrow
+                                    Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(16),
+                                        onTap: () {
+                                          setState(() {
+                                            _isHowItWorksExpanded = !_isHowItWorksExpanded;
+                                          });
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(20),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.info_outline,
+                                                color: Colors.orange[600],
+                                                size: 24,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              const Expanded(
+                                                child: Text(
+                                                  'How it works',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                              ),
+                                              AnimatedRotation(
+                                                turns: _isHowItWorksExpanded ? 0.5 : 0,
+                                                duration: const Duration(milliseconds: 300),
+                                                child: Icon(
+                                                  Icons.keyboard_arrow_down,
+                                                  color: Colors.grey[600],
+                                                  size: 28,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    
+                                    // Content - Collapsible
+                                    AnimatedCrossFade(
+                                      firstChild: const SizedBox.shrink(),
+                                      secondChild: Padding(
+                                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                                        child: Column(
+                                          children: [
+                                            _buildHowItWorksStep(
+                                              Icons.restaurant_menu,
+                                              'Your family prepares fresh food at home',
+                                            ),
+                                            const SizedBox(height: 12),
+                                            _buildHowItWorksStep(
+                                              Icons.two_wheeler,
+                                              'Rider picks up packed tiffin from home',
+                                            ),
+                                            const SizedBox(height: 12),
+                                            _buildHowItWorksStep(
+                                              Icons.business,
+                                              'Delivered to your office',
+                                            ),
+                                            const SizedBox(height: 12),
+                                            _buildHowItWorksStep(
+                                              Icons.track_changes,
+                                              'Track rider in real-time',
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      crossFadeState: _isHowItWorksExpanded
+                                          ? CrossFadeState.showSecond
+                                          : CrossFadeState.showFirst,
+                                      duration: const Duration(milliseconds: 300),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 100),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Continue to Checkout Button (Fixed at bottom)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      width: double.infinity,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: _pickupAddress != null && _deliveryAddress != null
+                            ? const LinearGradient(
+                                colors: [Color(0xFFFF6B35), Color(0xFFFC8019)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: _pickupAddress == null || _deliveryAddress == null
+                            ? Colors.grey[300]
+                            : null,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: _pickupAddress != null && _deliveryAddress != null
+                            ? [
+                                BoxShadow(
+                                  color: const Color(0xFFFC8019).withOpacity(0.4),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: _pickupAddress == null || _deliveryAddress == null
+                              ? null
+                              : _proceedToCheckout,
+                          child: Center(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Proceed to Checkout',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: _pickupAddress != null && _deliveryAddress != null
+                                        ? Colors.white
+                                        : Colors.grey[600],
+                                  ),
+                                ),
+                                if (_pickupAddress != null && _deliveryAddress != null) ...[
+                                  const SizedBox(width: 8),
+                                  TweenAnimationBuilder<double>(
+                                    tween: Tween(begin: 0.0, end: 1.0),
+                                    duration: const Duration(milliseconds: 800),
+                                    curve: Curves.easeInOut,
+                                    builder: (context, value, child) {
+                                      return Transform.translate(
+                                        offset: Offset(value * 10, 0),
+                                        child: Opacity(
+                                          opacity: value,
+                                          child: const Icon(
+                                            Icons.arrow_forward_rounded,
+                                            color: Colors.white,
+                                            size: 24,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget _buildHowItWorksStep(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          color: Colors.green,
+          size: 20,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[700],
             ),
+          ),
+        ),
+      ],
     );
   }
 }

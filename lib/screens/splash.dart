@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../app_router.dart';
 
@@ -28,45 +29,50 @@ class _SplashScreenState extends State<SplashScreen> {
 
     if (!mounted) return;
 
+    // Check if user has seen onboarding
+    final prefs = await SharedPreferences.getInstance();
+    final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
+
     if (authProvider.isAuthenticated) {
-      // Navigate based on role
+      // User is logged in, navigate based on role
       switch (authProvider.currentUser?.role) {
         case 'customer':
           Navigator.of(context).pushReplacementNamed(AppRouter.customerHome);
           break;
         case 'cook':
-          Navigator.of(context).pushReplacementNamed(AppRouter.cookDashboard);
+          Navigator.of(context).pushReplacementNamed(AppRouter.cookDashboardModern); // 🎨 NEW MODERN UI
           break;
         case 'rider':
-          Navigator.of(context).pushReplacementNamed(AppRouter.riderHome);
+          Navigator.of(context).pushReplacementNamed(AppRouter.riderHomeModern); // 🎨 NEW MODERN UI
           break;
         default:
-          Navigator.of(context).pushReplacementNamed(AppRouter.roleSelect);
+          Navigator.of(context).pushReplacementNamed(AppRouter.onboarding);
       }
     } else {
-      Navigator.of(context).pushReplacementNamed(AppRouter.roleSelect);
+      // User is not logged in
+      if (hasSeenOnboarding) {
+        // Show role selection if already seen onboarding
+        Navigator.of(context).pushReplacementNamed(AppRouter.roleSelect);
+      } else {
+        // Show onboarding for first time users
+        Navigator.of(context).pushReplacementNamed(AppRouter.onboarding);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF5E6), // Light orange/peach background to match logo
+      backgroundColor: Colors.white,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Lottie.asset(
-              'assets/lottie/logo_app.json',
-              width: MediaQuery.of(context).size.width * 0.9,
-              height: MediaQuery.of(context).size.height * 0.5,
+              'assets/lottie/logo_animation.json',
+              width: MediaQuery.of(context).size.width * 0.8,
+              height: MediaQuery.of(context).size.height * 0.6,
               fit: BoxFit.contain,
-            ),
-            const SizedBox(height: 40),
-            Lottie.asset(
-              'assets/lottie/loading_auth.json',
-              width: 100,
-              height: 100,
             ),
           ],
         ),

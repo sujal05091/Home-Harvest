@@ -2,17 +2,20 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/delivery_model.dart';
+import '../models/order_model.dart';
 import '../services/firestore_service.dart';
 
 class RiderProvider with ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
 
   List<DeliveryModel> _activeDeliveries = [];
+  List<OrderModel> _availableOrders = []; // 🆕 Unassigned orders available for riders
   bool _isLoading = false;
   String? _errorMessage;
   bool _isAvailable = true;
 
   List<DeliveryModel> get activeDeliveries => _activeDeliveries;
+  List<OrderModel> get availableOrders => _availableOrders; // 🆕
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isAvailable => _isAvailable;
@@ -31,6 +34,26 @@ class RiderProvider with ChangeNotifier {
       onError: (error) {
         _errorMessage = error.toString();
         _isLoading = false;
+        notifyListeners();
+      },
+    );
+  }
+
+  // 🆕 Load unassigned orders available for riders to accept
+  void loadAvailableOrders() {
+    print('🔍 [RiderProvider] Starting to load available orders...');
+    _firestoreService.getUnassignedOrders().listen(
+      (orders) {
+        print('📦 [RiderProvider] Received ${orders.length} unassigned orders');
+        if (orders.isNotEmpty) {
+          print('   First order: ${orders.first.orderId} - ${orders.first.customerName}');
+        }
+        _availableOrders = orders;
+        notifyListeners();
+      },
+      onError: (error) {
+        print('❌ [RiderProvider] Error loading orders: $error');
+        _errorMessage = error.toString();
         notifyListeners();
       },
     );

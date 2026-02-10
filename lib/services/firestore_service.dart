@@ -97,6 +97,14 @@ class FirestoreService {
     });
   }
 
+  Future<OrderModel?> getOrder(String orderId) async {
+    DocumentSnapshot doc = await _firestore.collection('orders').doc(orderId).get();
+    if (doc.exists) {
+      return OrderModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+    }
+    return null;
+  }
+
   // Verifications
   Future<String> submitVerification(VerificationModel verification) async {
     DocumentReference ref = await _firestore
@@ -144,6 +152,30 @@ class FirestoreService {
         .map((snapshot) => snapshot.docs
             .map((doc) => DeliveryModel.fromMap(doc.data(), doc.id))
             .toList());
+  }
+
+  // 🆕 Get unassigned orders for riders (orders waiting for a rider)
+  Stream<List<OrderModel>> getUnassignedOrders() {
+    print('🔍 [FirestoreService] Setting up unassigned orders stream...');
+    return _firestore
+        .collection('orders')
+        .where('status', isEqualTo: OrderStatus.PLACED.name)
+        // REMOVED .orderBy() to avoid composite index requirement
+        .limit(50) // Increased limit to get more orders
+        .snapshots()
+        .map((snapshot) {
+          print('📡 [FirestoreService] Snapshot received: ${snapshot.docs.length} orders');
+          final orders = snapshot.docs
+              .map((doc) {
+                print('   Order: ${doc.id} - Status: ${doc.data()['status']}');
+                return OrderModel.fromMap(doc.data(), doc.id);
+              })
+              .toList();
+          // Sort in memory by createdAt descending
+          orders.sort((a, b) => (b.createdAt ?? DateTime.now()).compareTo(a.createdAt ?? DateTime.now()));
+          print('✅ [FirestoreService] Mapped and sorted ${orders.length} orders');
+          return orders;
+        });
   }
 
   Stream<DeliveryModel?> getDeliveryByOrderId(String orderId) {
@@ -424,6 +456,8 @@ class FirestoreService {
         'assignedRiderId': riderId,
         'assignedRiderName': riderName,
         if (riderPhone != null) 'assignedRiderPhone': riderPhone,
+        'isActive': true, // 🔥 Set delivery as active
+        'riderAcceptedAt': FieldValue.serverTimestamp(),
       },
     );
   }
@@ -434,7 +468,11 @@ class FirestoreService {
       case OrderStatus.PLACED:
         return 'Finding delivery partner...';
       case OrderStatus.ACCEPTED:
+        return 'Order accepted by cook';
+      case OrderStatus.PREPARING:
         return 'Preparing your order';
+      case OrderStatus.READY:
+        return 'Ready for pickup';
       case OrderStatus.RIDER_ASSIGNED:
         return 'Delivery partner assigned';
       case OrderStatus.RIDER_ACCEPTED:
@@ -458,7 +496,11 @@ class FirestoreService {
       case OrderStatus.PLACED:
         return 0.1;
       case OrderStatus.ACCEPTED:
-        return 0.25;
+        return 0.2;
+      case OrderStatus.PREPARING:
+        return 0.3;
+      case OrderStatus.READY:
+        return 0.35;
       case OrderStatus.RIDER_ASSIGNED:
         return 0.4;
       case OrderStatus.RIDER_ACCEPTED:

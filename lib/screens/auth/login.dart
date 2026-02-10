@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:lottie/lottie.dart';
 import '../../providers/auth_provider.dart';
 import '../../app_router.dart';
 import '../../services/fcm_service.dart';
+import '../../theme.dart';
+import '../../widgets/forgot_password_modal.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? role;
@@ -66,111 +70,379 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(authProvider.errorMessage ?? 'Login failed')),
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? 'Login failed'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
+  }
+
+  void _showForgotPasswordModal() {
+    ForgotPasswordModal.show(context);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Login as ${widget.role ?? "User"}')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 20),
-              Lottie.asset(
-                widget.role == 'cook' 
-                  ? 'assets/lottie/cook_signup.json'
-                  : widget.role == 'rider'
-                  ? 'assets/lottie/rider_signup.json'
-                  : 'assets/lottie/customer_signup.json',
-                width: MediaQuery.of(context).size.width,
-                height: 250,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(height: 30),
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.email),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) =>
-                    value!.isEmpty ? 'Please enter email' : null,
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _passwordController,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock),
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                    ),
-                    onPressed: () {
-                      setState(() => _obscurePassword = !_obscurePassword);
-                    },
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 20),
+
+                // Back Button
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.pop(context),
+                    color: AppTheme.textPrimary,
                   ),
                 ),
-                obscureText: _obscurePassword,
-                validator: (value) =>
-                    value!.isEmpty ? 'Please enter password' : null,
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {
-                    // Navigate to forgot password screen (to be created)
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Forgot password feature coming soon!')),
-                    );
-                  },
-                  child: const Text('Forgot Password?'),
+
+                const SizedBox(height: 10),
+
+                // Lottie Animation (role-based)
+                Center(
+                  child: widget.role == 'cook'
+                      ? Container(
+                          padding: EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Lottie.asset(
+                            'assets/lottie/cook_signup.json',
+                            height: 200,
+                            fit: BoxFit.contain,
+                          ),
+                        )
+                      : Lottie.asset(
+                          widget.role == 'rider'
+                              ? 'assets/lottie/rider_signup.json'
+                              : 'assets/lottie/customer_signup.json',
+                          height: 200,
+                          fit: BoxFit.contain,
+                        ),
                 ),
-              ),
-              const SizedBox(height: 30),
-              _isLoading
-                  ? Center(child: Lottie.asset('assets/lottie/loading_auth.json', width: 60, height: 60))
-                  : ElevatedButton(
-                      onPressed: _login,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      child: const Text('Login', style: TextStyle(fontSize: 16)),
+
+                const SizedBox(height: 24),
+
+                // Title
+                Text(
+                  'Login Account',
+                  style: GoogleFonts.inter(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Subtitle
+                Text(
+                  'Please login with registered account',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Email / Phone Field Label
+                Text(
+                  'Email or Phone Number',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Email / Phone Input
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    hintText: 'Enter your email or phone number',
+                    hintStyle: GoogleFonts.inter(
+                      color: AppTheme.textSecondary,
+                      fontSize: 14,
                     ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: _isLoading ? null : () {
-                  // TODO: Implement Google Sign In
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Google Sign In coming soon!')),
-                  );
-                },
-                icon: const Icon(Icons.g_mobiledata, size: 28),
-                label: const Text('Continue with Google'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                    filled: true,
+                    fillColor: AppTheme.lightGrey,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color: AppTheme.primaryOrange,
+                        width: 1,
+                      ),
+                    ),
+                    prefixIcon: Icon(
+                      Icons.email_outlined,
+                      color: _emailController.text.isEmpty
+                          ? AppTheme.textSecondary
+                          : AppTheme.primaryOrange,
+                    ),
+                  ),
+                  validator: (value) =>
+                      value!.isEmpty ? 'Please enter email or phone' : null,
+                  onChanged: (value) => setState(() {}),
                 ),
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(
-                  context,
-                  AppRouter.signup,
-                  arguments: {'role': widget.role},
+
+                const SizedBox(height: 20),
+
+                // Password Field Label
+                Text(
+                  'Password',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
                 ),
-                child: const Text("Don't have an account? Sign up"),
-              ),
-            ],
+
+                const SizedBox(height: 8),
+
+                // Password Input
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: 'Enter your password',
+                    hintStyle: GoogleFonts.inter(
+                      color: AppTheme.textSecondary,
+                      fontSize: 14,
+                    ),
+                    filled: true,
+                    fillColor: AppTheme.lightGrey,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color: AppTheme.primaryOrange,
+                        width: 1,
+                      ),
+                    ),
+                    prefixIcon: Icon(
+                      Icons.lock_outlined,
+                      color: _passwordController.text.isEmpty
+                          ? AppTheme.textSecondary
+                          : AppTheme.primaryOrange,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: AppTheme.textSecondary,
+                      ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
+                    ),
+                  ),
+                  validator: (value) =>
+                      value!.isEmpty ? 'Please enter password' : null,
+                  onChanged: (value) => setState(() {}),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Forgot Password
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _showForgotPasswordModal,
+                    child: Text(
+                      'Forgot Password?',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primaryOrange,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Sign In Button
+                SizedBox(
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _login,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryOrange,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      disabledBackgroundColor:
+                          AppTheme.primaryOrange.withOpacity(0.5),
+                    ),
+                    child: _isLoading
+                        ? Lottie.asset(
+                            'assets/lottie/loading_auth.json',
+                            width: 40,
+                            height: 40,
+                          )
+                        : Text(
+                            'Sign In',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Divider
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: AppTheme.dividerColor)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'Or continue with',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: AppTheme.dividerColor)),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // Google Sign In Button
+                SizedBox(
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading
+                        ? null
+                        : () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Google Sign In coming soon!')),
+                            );
+                          },
+                    icon: const FaIcon(
+                      FontAwesomeIcons.google,
+                      size: 20,
+                      color: AppTheme.primaryOrange,
+                    ),
+                    label: Text(
+                      'Sign In with Google',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppTheme.dividerColor),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Facebook Sign In Button
+                SizedBox(
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading
+                        ? null
+                        : () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Facebook Sign In coming soon!')),
+                            );
+                          },
+                    icon: const FaIcon(
+                      FontAwesomeIcons.facebook,
+                      size: 20,
+                      color: Color(0xFF1877F2),
+                    ),
+                    label: Text(
+                      'Sign In with Facebook',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppTheme.dividerColor),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Sign Up Link
+                InkWell(
+                  onTap: () => Navigator.pushNamed(
+                    context,
+                    AppRouter.signup,
+                    arguments: {'role': widget.role},
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Don\'t have an account? ',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          'Sign Up',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryOrange,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),

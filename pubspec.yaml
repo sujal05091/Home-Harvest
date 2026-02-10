@@ -15,7 +15,7 @@ dependencies:
   firebase_core: ^3.6.0
   firebase_auth: ^5.3.1
   cloud_firestore: ^5.4.4
-  # firebase_storage: ^12.3.4  # Replaced with Cloudinary (no payment needed)
+  firebase_storage: ^12.3.4  # For profile image uploads
   cloudinary_public: ^0.23.1
   firebase_messaging: ^15.1.3
 
@@ -34,6 +34,11 @@ dependencies:
   cached_network_image: ^3.4.1
   shimmer: ^3.0.0
   flutter_rating_bar: ^4.0.1
+  google_fonts: ^6.2.1
+  smooth_page_indicator: ^1.2.0
+  font_awesome_flutter: ^10.7.0
+  pin_code_fields: ^8.0.1
+  fl_chart: ^0.69.0
   
   # Notifications
   flutter_local_notifications: ^18.0.1
@@ -44,6 +49,7 @@ dependencies:
   permission_handler: ^11.3.1
   url_launcher: ^6.3.2
   uuid: ^4.5.1
+  shared_preferences: ^2.3.3
   http: ^1.2.2
 
   cupertino_icons: ^1.0.8

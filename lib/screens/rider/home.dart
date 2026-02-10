@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -33,6 +34,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
         return;
       }
       
+      // � CHECK FOR ACTIVE DELIVERY (NEW)
+      _checkActiveDelivery(authProvider.currentUser!.uid);
+      
       // 🔔 Initialize local notifications
       _initializeLocalNotifications();
       
@@ -45,6 +49,41 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       Provider.of<RiderProvider>(context, listen: false)
           .loadRiderDeliveries(authProvider.currentUser!.uid);
     });
+  }
+  
+  // 🚀 Check for active delivery on app launch
+  Future<void> _checkActiveDelivery(String riderId) async {
+    try {
+      print('🔍 Checking for active delivery for rider: $riderId');
+      
+      final activeOrderSnapshot = await FirebaseFirestore.instance
+          .collection('orders')
+          .where('assignedRiderId', isEqualTo: riderId)
+          .where('isActive', isEqualTo: true)
+          .where('status', whereIn: ['RIDER_ACCEPTED', 'ON_THE_WAY_TO_PICKUP', 'PICKED_UP', 'ON_THE_WAY_TO_DROP'])
+          .limit(1)
+          .get();
+      
+      if (activeOrderSnapshot.docs.isNotEmpty) {
+        final orderDoc = activeOrderSnapshot.docs.first;
+        final orderId = orderDoc.id;
+        
+        print('✅ Active delivery found: $orderId');
+        
+        // Auto-navigate to delivery screen
+        if (mounted) {
+          Navigator.pushNamed(
+            context,
+            AppRouter.riderDeliveryRequest,
+            arguments: {'orderId': orderId},
+          );
+        }
+      } else {
+        print('ℹ️ No active delivery found');
+      }
+    } catch (e) {
+      print('❌ Error checking active delivery: $e');
+    }
   }
   
   // 🔔 Initialize Local Notifications
@@ -266,9 +305,34 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
     final riderProvider = Provider.of<RiderProvider>(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Rider Dashboard'),
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        final shouldExit = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Exit App'),
+            content: Text('Do you want to exit the app?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('No'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text('Yes'),
+              ),
+            ],
+          ),
+        );
+        if (shouldExit == true) {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Rider Dashboard'),
         actions: [
           IconButton(
             icon: const Icon(Icons.person),
@@ -351,6 +415,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           ),
         ],
       ),
+      ), // Close PopScope
     );
   }
 }

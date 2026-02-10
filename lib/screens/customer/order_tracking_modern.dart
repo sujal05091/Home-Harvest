@@ -131,14 +131,12 @@ class _OrderTrackingModernScreenState extends State<OrderTrackingModernScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
         title: const Text(
           'Track Your Order',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         elevation: 0,
-        backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
       ),
       body: StreamBuilder<OrderModel?>(
@@ -432,6 +430,10 @@ class _OrderTrackingModernScreenState extends State<OrderTrackingModernScreen> {
         return Colors.blue;
       case OrderStatus.ACCEPTED:
         return Colors.orange;
+      case OrderStatus.PREPARING:
+        return Colors.purple;
+      case OrderStatus.READY:
+        return Colors.green;
       case OrderStatus.RIDER_ASSIGNED:
         return Colors.blue;
       case OrderStatus.RIDER_ACCEPTED:
@@ -455,6 +457,10 @@ class _OrderTrackingModernScreenState extends State<OrderTrackingModernScreen> {
         return Icons.receipt_long_rounded;
       case OrderStatus.ACCEPTED:
         return Icons.check_circle_rounded;
+      case OrderStatus.PREPARING:
+        return Icons.soup_kitchen_rounded;
+      case OrderStatus.READY:
+        return Icons.check_circle_outline_rounded;
       case OrderStatus.RIDER_ASSIGNED:
         return Icons.person_rounded;
       case OrderStatus.RIDER_ACCEPTED:
@@ -478,6 +484,10 @@ class _OrderTrackingModernScreenState extends State<OrderTrackingModernScreen> {
         return 'Order Placed';
       case OrderStatus.ACCEPTED:
         return 'Accepted by Cook';
+      case OrderStatus.PREPARING:
+        return 'Preparing Food';
+      case OrderStatus.READY:
+        return 'Ready for Pickup';
       case OrderStatus.RIDER_ASSIGNED:
         return 'Rider Assigned';
       case OrderStatus.RIDER_ACCEPTED:

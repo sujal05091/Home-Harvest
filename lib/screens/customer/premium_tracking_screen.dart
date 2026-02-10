@@ -31,6 +31,12 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
   LatLng? _previousRiderPosition;
   double _riderBearing = 0;
   
+  // Smooth rider animation
+  late AnimationController _riderAnimationController;
+  Animation<double>? _riderLatAnimation;
+  Animation<double>? _riderLngAnimation;
+  Animation<double>? _riderRotationAnimation;
+  
   // Locations
   LatLng? _pickupLocation;
   LatLng? _dropLocation;
@@ -78,6 +84,12 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
       ),
     );
     
+    // Rider smooth movement animation
+    _riderAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1500), // 1.5 second smooth transition
+      vsync: this,
+    );
+    
     // Auto-adjust map view every 5 seconds (performance optimized)
     _mapUpdateTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted) _adjustMapView();
@@ -88,6 +100,7 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
   void dispose() {
     _bottomSheetController.dispose();
     _routeAnimationController.dispose();
+    _riderAnimationController.dispose();
     _mapUpdateTimer?.cancel();
     super.dispose();
   }
@@ -96,13 +109,30 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
   /// Phase A: Curved dotted line (before rider accepts)
   /// Phase B: Road-based solid line (after rider accepts)
   Future<void> _loadRoute(OrderStatus status) async {
-    if (_pickupLocation == null || _dropLocation == null) return;
+    if (_pickupLocation == null || _dropLocation == null) {
+      print('⚠️ [Route] Missing locations: pickup=$_pickupLocation, drop=$_dropLocation');
+      return;
+    }
     
     // Skip if already loading or if we already loaded this status
-    if (_isLoadingRoute) return;
-    if (_lastLoadedStatus == status) return;  // Prevent duplicate loads for same status
-    if (status.index < OrderStatus.RIDER_ACCEPTED.index && _routePoints.isNotEmpty && !_isRiderAccepted) return;
-    if (status.index >= OrderStatus.RIDER_ACCEPTED.index && _isRiderAccepted && _routePoints.isNotEmpty) return;
+    if (_isLoadingRoute) {
+      print('⏳ [Route] Already loading, skipping');
+      return;
+    }
+    if (_lastLoadedStatus == status) {
+      print('ℹ️ [Route] Already loaded for status: $status');
+      return;  // Prevent duplicate loads for same status
+    }
+    if (status.index < OrderStatus.RIDER_ACCEPTED.index && _routePoints.isNotEmpty && !_isRiderAccepted) {
+      print('ℹ️ [Route] Pre-rider route already loaded');
+      return;
+    }
+    if (status.index >= OrderStatus.RIDER_ACCEPTED.index && _isRiderAccepted && _routePoints.isNotEmpty) {
+      print('ℹ️ [Route] Post-rider route already loaded');
+      return;
+    }
+    
+    print('🗺️ [Route] Loading route for status: $status, riderPosition: $_riderPosition');
     
     setState(() {
       _isLoadingRoute = true;
@@ -113,11 +143,14 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
       // PHASE A: Before rider accepts - show curved dotted line
       if (status.index < OrderStatus.RIDER_ACCEPTED.index) {
         if (_routePoints.isEmpty) {
+          print('🏁 [Route] Phase A: Generating curved route pickup→drop');
           final curvedRoute = RouteService.generateCurvedRoute(
             start: _pickupLocation!,
             end: _dropLocation!,
             segments: 50,
           );
+          
+          print('✅ [Route] Generated ${curvedRoute.length} curved points');
           
           setState(() {
             _routePoints = curvedRoute;
@@ -130,14 +163,43 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
       }
       // PHASE B: After rider accepts - fetch road-based route
       else {
-        if (!_isRiderAccepted && _riderPosition != null) {
-          // Fetch road route: Rider → Pickup → Drop
-          final roadRoute = await RouteService.getMultiWaypointRoute(
+        print('🚴 [Route] Phase B: Fetching road route');
+        print('🚴 [Route] Rider: $_riderPosition');
+        print('🚴 [Route] Pickup: ${_pickupLocation!.latitude}, ${_pickupLocation!.longitude}');
+        print('🚴 [Route] Drop: ${_dropLocation!.latitude}, ${_dropLocation!.longitude}');
+        
+        // Determine start location: use rider position if available, otherwise pickup
+        final startLocation = _riderPosition ?? _pickupLocation!;
+        
+        print('🚴 [Route] Using start location: ${startLocation.latitude}, ${startLocation.longitude}');
+        
+        // Fetch road route
+        List<LatLng> roadRoute;
+        
+        if (_riderPosition != null && status.index < OrderStatus.PICKED_UP.index) {
+          // Rider → Pickup → Drop (3 waypoints)
+          roadRoute = await RouteService.getMultiWaypointRoute(
             riderLocation: _riderPosition!,
             pickupLocation: _pickupLocation!,
             dropLocation: _dropLocation!,
           );
-          
+        } else if (_riderPosition != null && status.index >= OrderStatus.PICKED_UP.index) {
+          // Rider → Drop (2 waypoints, rider already picked up food)
+          roadRoute = await RouteService.getRoute(
+            start: _riderPosition!,
+            end: _dropLocation!,
+          );
+        } else {
+          // Pickup → Drop (fallback if no rider position yet)
+          roadRoute = await RouteService.getRoute(
+            start: _pickupLocation!,
+            end: _dropLocation!,
+          );
+        }
+        
+        print('✅ [Route] Got ${roadRoute.length} road route points');
+        
+        if (roadRoute.length >= 2) {
           setState(() {
             _routePoints = roadRoute;
             _isRiderAccepted = true;
@@ -145,10 +207,57 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
           
           // Animate route drawing
           _routeAnimationController.forward(from: 0);
+          
+          // Adjust map to show route
+          _adjustMapView();
+        } else {
+          print('⚠️ [Route] Too few points returned: ${roadRoute.length}');
         }
       }
     } catch (e) {
-      print('❌ Route loading error: $e');
+      print('❌ [Route] Error loading route: $e');
+    } finally {
+      setState(() => _isLoadingRoute = false);
+    }
+  }
+
+  /// Recalculate route with rider's current position
+  Future<void> _recalculateRouteWithRider(OrderStatus status) async {
+    if (_riderPosition == null || _pickupLocation == null || _dropLocation == null) return;
+    if (_isLoadingRoute) return;
+    if (status.index < OrderStatus.RIDER_ACCEPTED.index) return;
+    
+    setState(() => _isLoadingRoute = true);
+    
+    try {
+      // Determine target based on order status
+      LatLng targetLocation;
+      
+      if (status.index < OrderStatus.PICKED_UP.index) {
+        // Rider heading to pickup
+        targetLocation = _pickupLocation!;
+      } else {
+        // Rider heading to customer
+        targetLocation = _dropLocation!;
+      }
+      
+      // Fetch updated route: Rider → Target
+      final roadRoute = await RouteService.getRoute(
+        start: _riderPosition!,
+        end: targetLocation,
+      );
+      
+      if (roadRoute.isNotEmpty) {
+        setState(() {
+          _routePoints = roadRoute;
+          _isRiderAccepted = true;
+        });
+        
+        // Subtle route animation (only fade in new segments)
+        _routeAnimationController.forward(from: 0.8);
+      }
+    } catch (e) {
+      print('❌ Route recalculation error: $e');
     } finally {
       setState(() => _isLoadingRoute = false);
     }
@@ -276,26 +385,41 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
 
           final order = OrderModel.fromMap(orderData, widget.orderId);
           
-          // Update locations
-          if (order.pickupLocation != null) {
-            _pickupLocation = LatLng(
-              order.pickupLocation!.latitude,
-              order.pickupLocation!.longitude,
-            );
-          }
-          if (order.dropLocation != null) {
-            _dropLocation = LatLng(
-              order.dropLocation!.latitude,
-              order.dropLocation!.longitude,
-            );
-          }
-          
-          // Load route based on order status (ONLY if status changed)
-          if (_lastLoadedStatus != order.status) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Update locations (scheduled after frame to avoid issues)
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            
+            bool updated = false;
+            
+            if (order.pickupLocation != null) {
+              final newPickup = LatLng(
+                order.pickupLocation!.latitude,
+                order.pickupLocation!.longitude,
+              );
+              if (_pickupLocation != newPickup) {
+                _pickupLocation = newPickup;
+                updated = true;
+              }
+            }
+            
+            if (order.dropLocation != null) {
+              final newDrop = LatLng(
+                order.dropLocation!.latitude,
+                order.dropLocation!.longitude,
+              );
+              if (_dropLocation != newDrop) {
+                _dropLocation = newDrop;
+                updated = true;
+              }
+            }
+            
+            // Load route based on order status (ONLY if status changed)
+            if (_lastLoadedStatus != order.status) {
               _loadRoute(order.status);
-            });
-          }
+            } else if (updated) {
+              setState(() {});
+            }
+          });
 
           return StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
@@ -324,20 +448,90 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
                 final deliveryData = deliverySnapshot.data!.data() as Map<String, dynamic>;
                 delivery = DeliveryModel.fromMap(deliveryData, widget.orderId);
                 
-                // Update rider position
+                print('🚴 [Tracking] Delivery data received: currentLocation=${delivery.currentLocation}');
+                
+                // Update rider position (scheduled after frame to avoid setState during build)
                 if (delivery.currentLocation != null) {
                   final newPosition = LatLng(
                     delivery.currentLocation!.latitude,
                     delivery.currentLocation!.longitude,
                   );
                   
-                  // Calculate bearing if position changed
-                  if (_riderPosition != null) {
-                    _riderBearing = _calculateBearing(_riderPosition!, newPosition);
-                    _previousRiderPosition = _riderPosition;
-                  }
+                  print('📍 [Tracking] Rider position: ${newPosition.latitude}, ${newPosition.longitude}');
                   
-                  _riderPosition = newPosition;
+                  // Schedule state update after current frame
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    
+                    bool shouldSetState = false;
+                    
+                    // Calculate bearing if position changed
+                    if (_riderPosition != null) {
+                      final oldBearing = _riderBearing;
+                      _riderBearing = _calculateBearing(_riderPosition!, newPosition);
+                      _previousRiderPosition = _riderPosition;
+                      shouldSetState = true;
+                      
+                      // Create smooth animations for position and rotation
+                      _riderLatAnimation = Tween<double>(
+                        begin: _riderPosition!.latitude,
+                        end: newPosition.latitude,
+                      ).animate(CurvedAnimation(
+                        parent: _riderAnimationController,
+                        curve: Curves.easeInOut,
+                      ));
+                      
+                      _riderLngAnimation = Tween<double>(
+                        begin: _riderPosition!.longitude,
+                        end: newPosition.longitude,
+                      ).animate(CurvedAnimation(
+                        parent: _riderAnimationController,
+                        curve: Curves.easeInOut,
+                      ));
+                      
+                      _riderRotationAnimation = Tween<double>(
+                        begin: oldBearing,
+                        end: _riderBearing,
+                      ).animate(CurvedAnimation(
+                        parent: _riderAnimationController,
+                        curve: Curves.easeInOut,
+                      ));
+                      
+                      // Start smooth animation
+                      _riderAnimationController.forward(from: 0.0);
+                      
+                      // Update actual position after animation for next cycle
+                      _riderPosition = newPosition;
+                      
+                      // Recalculate route if rider moved significantly
+                      if (order.status.index >= OrderStatus.RIDER_ACCEPTED.index) {
+                        final distance = _calculateDistance(
+                          _previousRiderPosition!.latitude, _previousRiderPosition!.longitude,
+                          newPosition.latitude, newPosition.longitude,
+                        );
+                        // If rider moved more than 50 meters, recalculate route
+                        if (distance > 0.05) {
+                          print('🔄 [Tracking] Rider moved ${distance}km, recalculating route');
+                          _recalculateRouteWithRider(order.status);
+                        }
+                      }
+                    } else {
+                      // First time getting rider position
+                      print('✨ [Tracking] First rider position received, loading route');
+                      _riderPosition = newPosition;
+                      shouldSetState = true;
+                      
+                      // Force reload route with rider position (reset status tracking)
+                      if (order.status.index >= OrderStatus.RIDER_ACCEPTED.index) {
+                        _lastLoadedStatus = null;  // Reset to force reload with rider position
+                        _loadRoute(order.status);
+                      }
+                    }
+                    
+                    if (shouldSetState) {
+                      setState(() {});
+                    }
+                  });
                 }
               }
 
@@ -393,17 +587,74 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
       ));
     }
     
-    // Add animated rider marker
+    // Add smooth animated rider marker with custom image
     if (_riderPosition != null &&
         order.status.index >= OrderStatus.RIDER_ACCEPTED.index) {
+      print('🏍️ [Map] Adding rider marker at: ${_riderPosition!.latitude}, ${_riderPosition!.longitude}');
+      
+      // Get animated position (smooth interpolation)
+      LatLng displayPosition = _riderPosition!;
+      double displayRotation = _riderBearing;
+      
+      if (_riderLatAnimation != null && _riderLngAnimation != null) {
+        displayPosition = LatLng(
+          _riderLatAnimation!.value,
+          _riderLngAnimation!.value,
+        );
+      }
+      
+      if (_riderRotationAnimation != null) {
+        displayRotation = _riderRotationAnimation!.value;
+      }
+      
       markers.add(
-        AnimatedRiderMarker.create(
-          currentPosition: _riderPosition!,
-          targetPosition: _previousRiderPosition,
-          bearing: _riderBearing,
-          riderId: order.assignedRiderId ?? '',
+        Marker(
+          point: displayPosition,
+          width: 80,
+          height: 80,
+          child: Transform.rotate(
+            angle: displayRotation * (pi / 180),
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.orange.withOpacity(0.4),
+                    blurRadius: 15,
+                    spreadRadius: 3,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/rider_homeharvest.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    // Fallback to icon if image fails to load
+                    return Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.orange,
+                        border: Border.all(color: Colors.white, width: 3),
+                      ),
+                      child: Icon(
+                        Icons.two_wheeler,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
         ),
       );
+    } else {
+      print('⚠️ [Map] Rider marker NOT added: riderPosition=$_riderPosition, status=${order.status}');
     }
 
     return FlutterMap(
@@ -439,6 +690,8 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
               final visiblePoints = (_routePoints.length * _routeAnimation.value).round();
               final animatedPoints = _routePoints.take(visiblePoints.clamp(2, _routePoints.length)).toList();
               
+              print('🗺️ [Map] Drawing route: ${animatedPoints.length} points (total: ${_routePoints.length})');
+              
               if (animatedPoints.length < 2) {
                 return const SizedBox.shrink();
               }
@@ -447,18 +700,20 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
                 polylines: [
                   Polyline(
                     points: animatedPoints,
-                    strokeWidth: _isRiderAccepted ? 4.0 : 3.0,
-                    // PHASE A: Orange color (before rider accepts)
-                    // PHASE B: Gradient color (after rider accepts)
-                    color: const Color(0xFFFF7A00),
-                    gradientColors: _isRiderAccepted 
-                        ? [const Color(0xFFFF7A00), Colors.green]
-                        : null,
+                    strokeWidth: 5.0,
+                    color: const Color(0xFFFF7A00), // Orange color
                     borderStrokeWidth: 2,
                     borderColor: Colors.white.withOpacity(0.8),
                   ),
                 ],
               );
+            },
+          )
+        else
+          Builder(
+            builder: (context) {
+              print('⚠️ [Map] No route points to display');
+              return const SizedBox.shrink();
             },
           ),
         

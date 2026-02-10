@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
 import '../../providers/auth_provider.dart';
@@ -57,9 +58,34 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Cook Dashboard'),
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        final shouldExit = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Exit App'),
+            content: Text('Do you want to exit the app?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('No'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text('Yes'),
+              ),
+            ],
+          ),
+        );
+        if (shouldExit == true) {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Cook Dashboard'),
         actions: [
           IconButton(
             icon: const Icon(Icons.person),
@@ -270,6 +296,7 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Add Dish'),
       ),
+      ), // Close PopScope
     );
   }
 
@@ -416,6 +443,10 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
         return Colors.orange;
       case OrderStatus.ACCEPTED:
         return Colors.blue;
+      case OrderStatus.PREPARING:
+        return Colors.purple;
+      case OrderStatus.READY:
+        return Colors.green;
       case OrderStatus.RIDER_ASSIGNED:
         return Colors.purple;
       case OrderStatus.RIDER_ACCEPTED:
@@ -439,7 +470,11 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
       case OrderStatus.PLACED:
         return 'NEW ORDER';
       case OrderStatus.ACCEPTED:
+        return 'ACCEPTED';
+      case OrderStatus.PREPARING:
         return 'PREPARING';
+      case OrderStatus.READY:
+        return 'READY';
       case OrderStatus.RIDER_ASSIGNED:
         return 'RIDER ASSIGNED';
       case OrderStatus.RIDER_ACCEPTED:

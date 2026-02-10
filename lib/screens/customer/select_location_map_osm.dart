@@ -94,21 +94,70 @@ class _SelectLocationMapScreenState extends State<SelectLocationMapScreen> {
         location.latitude,
         location.longitude,
       );
+      
+      debugPrint('📍 Placemarks count: ${placemarks.length}');
+      
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
+        
+        // Debug: Print all available fields
+        debugPrint('🏠 Name: ${place.name}');
+        debugPrint('🏠 Street: ${place.street}');
+        debugPrint('🏠 SubLocality: ${place.subLocality}');
+        debugPrint('🏠 Locality: ${place.locality}');
+        debugPrint('🏠 SubAdminArea: ${place.subAdministrativeArea}');
+        debugPrint('🏠 AdminArea: ${place.administrativeArea}');
+        debugPrint('🏠 PostalCode: ${place.postalCode}');
+        debugPrint('🏠 Country: ${place.country}');
+        
+        // Build address from available components
+        List<String> addressParts = [];
+        
+        // Add name if it's a named location (like a business or landmark)
+        if (place.name != null && place.name!.isNotEmpty && place.name != place.street) {
+          addressParts.add(place.name!);
+        }
+        
+        if (place.street != null && place.street!.isNotEmpty) {
+          addressParts.add(place.street!);
+        }
+        if (place.subLocality != null && place.subLocality!.isNotEmpty) {
+          addressParts.add(place.subLocality!);
+        }
+        if (place.locality != null && place.locality!.isNotEmpty) {
+          addressParts.add(place.locality!);
+        }
+        if (place.subAdministrativeArea != null && place.subAdministrativeArea!.isNotEmpty && place.subAdministrativeArea != place.locality) {
+          addressParts.add(place.subAdministrativeArea!);
+        }
+        if (place.administrativeArea != null && place.administrativeArea!.isNotEmpty) {
+          addressParts.add(place.administrativeArea!);
+        }
+        if (place.postalCode != null && place.postalCode!.isNotEmpty) {
+          addressParts.add(place.postalCode!);
+        }
+        if (place.country != null && place.country!.isNotEmpty) {
+          addressParts.add(place.country!);
+        }
+        
+        debugPrint('✅ Address parts: $addressParts');
+        
         setState(() {
-          _selectedAddress = [
-            place.street,
-            place.subLocality,
-            place.locality,
-            place.administrativeArea,
-            place.postalCode,
-          ].where((e) => e != null && e.isNotEmpty).join(', ');
+          _selectedAddress = addressParts.isNotEmpty 
+              ? addressParts.join(', ')
+              : 'Lat: ${location.latitude.toStringAsFixed(4)}, Lng: ${location.longitude.toStringAsFixed(4)}';
+        });
+      } else {
+        debugPrint('❌ No placemarks found');
+        setState(() {
+          _selectedAddress = 'Lat: ${location.latitude.toStringAsFixed(4)}, Lng: ${location.longitude.toStringAsFixed(4)}';
         });
       }
     } catch (e) {
-      print('Error getting address: $e');
-      setState(() => _selectedAddress = 'Address not found');
+      debugPrint('❌ Error getting address: $e');
+      setState(() {
+        _selectedAddress = 'Lat: ${location.latitude.toStringAsFixed(4)}, Lng: ${location.longitude.toStringAsFixed(4)}';
+      });
     } finally {
       setState(() => _isLoadingAddress = false);
     }
@@ -202,9 +251,7 @@ class _SelectLocationMapScreenState extends State<SelectLocationMapScreen> {
                   center: _selectedLocation!,
                   zoom: 15.0,
                   mapController: _mapController,
-                  markers: _selectedLocation != null
-                      ? [MarkerHelper.createDraggablePin(_selectedLocation!)]
-                      : [],
+                  markers: [], // Remove markers, we'll use a center pin instead
                   onTap: (latLng) {
                     setState(() => _selectedLocation = latLng);
                     _getAddressFromLatLng(latLng);
@@ -218,6 +265,45 @@ class _SelectLocationMapScreenState extends State<SelectLocationMapScreen> {
                       _getAddressFromLatLng(myLocation);
                     }
                   },
+                  onPositionChanged: (camera, hasGesture) {
+                    // Update location as user drags the map
+                    if (hasGesture) {
+                      final center = camera.center;
+                      if (_selectedLocation != center) {
+                        setState(() => _selectedLocation = center);
+                        // Debounce address fetching to avoid too many requests
+                        Future.delayed(const Duration(milliseconds: 500), () {
+                          if (_selectedLocation == center) {
+                            _getAddressFromLatLng(center);
+                          }
+                        });
+                      }
+                    }
+                  },
+                ),
+
+                // Center Pin (Fixed position that stays in center as map moves)
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        size: 50,
+                        color: Color(0xFFFC8019),
+                      ),
+                      // Shadow/dot under pin
+                      Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
 
                 // Search Bar
@@ -344,7 +430,7 @@ class _SelectLocationMapScreenState extends State<SelectLocationMapScreen> {
                           Text(
                             _selectedAddress.isNotEmpty
                                 ? _selectedAddress
-                                : 'Tap on map to select location',
+                                : 'Drag map to select location',
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey[700],

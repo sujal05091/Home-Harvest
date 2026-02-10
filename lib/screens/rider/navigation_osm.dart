@@ -6,9 +6,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/firestore_service.dart';
 import '../../services/osm_maps_service.dart';
 import '../../services/rider_location_service.dart';
+import '../../services/wallet_service.dart';
 import '../../models/delivery_model.dart';
 import '../../models/order_model.dart';
 import '../../widgets/osm_map_widget.dart';
+import '../../app_router.dart';
 import 'dart:async';
 
 /// 🛵 RIDER NAVIGATION with OpenStreetMap (FREE!)
@@ -38,6 +40,7 @@ class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final OSMMapsService _mapsService = OSMMapsService();
   final RiderLocationService _locationService = RiderLocationService();
+  final WalletService _walletService = WalletService();
   
   LatLng? _currentLocation;
   List<Marker> _markers = [];
@@ -45,6 +48,7 @@ class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
   LatLng? _pickupLocation;
   LatLng? _dropLocation;
   bool _isTracking = false;
+  bool _isCompletingDelivery = false; // Prevent double completion
   String? _riderId;
 
   @override
@@ -189,6 +193,16 @@ class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
 
   /// Update delivery status
   Future<void> _updateDeliveryStatus(DeliveryStatus status) async {
+    // 🛡️ Prevent double completion
+    if (status == DeliveryStatus.DELIVERED && _isCompletingDelivery) {
+      debugPrint('⚠️ Delivery already being completed, ignoring duplicate request');
+      return;
+    }
+    
+    if (status == DeliveryStatus.DELIVERED) {
+      _isCompletingDelivery = true;
+    }
+    
     try {
       // Update delivery status
       await _firestoreService.updateDeliveryStatus(widget.deliveryId, status);
@@ -225,29 +239,117 @@ class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
           .update({
         'status': orderStatus.name,
         if (status == DeliveryStatus.PICKED_UP) 'pickedUpAt': Timestamp.fromDate(timestamp!),
-        if (status == DeliveryStatus.DELIVERED) 'deliveredAt': Timestamp.fromDate(timestamp!),
+        if (status == DeliveryStatus.DELIVERED) ...{
+          'deliveredAt': Timestamp.fromDate(timestamp!),
+          'isActive': false, // 🔥 Mark delivery as inactive
+        },
         'updatedAt': FieldValue.serverTimestamp(),
       });
       
       debugPrint('✅ Delivery ${widget.deliveryId} status updated to ${status.name}');
       debugPrint('✅ Order ${widget.orderId} status updated to ${orderStatus.name}');
       
+      // 🎯 DELIVERY COMPLETION FLOW
       if (status == DeliveryStatus.DELIVERED && mounted) {
-        _mapsService.stopLocationUpdates();
-        Navigator.pop(context);
+        await _completeDelivery();
+      }
+    } catch (e) {
+      _isCompletingDelivery = false;
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Delivery completed successfully! 🎉'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Text('Error updating status: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }
-    } catch (e) {
+    }
+  }
+  
+  /// 🎯 Complete delivery: Stop tracking, update earnings, navigate home
+  Future<void> _completeDelivery() async {
+    try {
+      debugPrint('🎉 [Delivery] Starting completion flow');
+      
+      // A. STOP TRACKING (both services)
+      debugPrint('🛑 [Delivery] Stopping location tracking');
+      _mapsService.stopLocationUpdates();
+      if (_riderId != null) {
+        await _locationService.stopTracking(_riderId!);
+      }
+      
+      // B. GET ORDER DATA & UPDATE RIDER EARNINGS
+      debugPrint('💰 [Delivery] Fetching order data for earnings');
+      final orderDoc = await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.orderId)
+          .get();
+      
+      if (orderDoc.exists && _riderId != null) {
+        final orderData = orderDoc.data()!;
+        final riderEarning = (orderData['riderEarning'] as num?)?.toDouble() ?? 0.0;
+        
+        if (riderEarning > 0) {
+          debugPrint('💵 [Delivery] Adding ₹$riderEarning to rider wallet');
+          
+          // C. UPDATE RIDER WALLET (totalEarnings, todayEarnings)
+          await _walletService.creditWallet(
+            riderId: _riderId!,
+            amount: riderEarning,
+            orderId: widget.orderId,
+            description: 'Delivery completed - Order #${widget.orderId.substring(0, 8)}',
+          );
+          
+          debugPrint('✅ [Delivery] Rider earnings updated successfully');
+        }
+      }
+      
+      // D. SHOW SUCCESS MESSAGE
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating status: $e')),
+          SnackBar(
+            content: Text(
+              'Delivery completed successfully! 🎉\nEarnings updated',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
         );
       }
+      
+      // E. AUTO NAVIGATION TO HOME (clear navigation stack)
+      debugPrint('🏠 [Delivery] Navigating to rider home');
+      await Future.delayed(const Duration(milliseconds: 500)); // Let snackbar show
+      
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AppRouter.riderHome,
+          (route) => false, // Remove all previous routes
+        );
+      }
+      
+      debugPrint('✅ [Delivery] Completion flow finished');
+    } catch (e) {
+      debugPrint('❌ [Delivery] Error in completion flow: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error completing delivery: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        
+        // Still navigate home even if earnings update fails
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AppRouter.riderHome,
+          (route) => false,
+        );
+      }
+    } finally {
+      _isCompletingDelivery = false;
     }
   }
 

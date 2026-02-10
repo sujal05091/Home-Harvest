@@ -474,6 +474,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         return Colors.blue;
       case OrderStatus.ACCEPTED:
         return Colors.green;
+      case OrderStatus.PREPARING:
+        return Colors.purple;
+      case OrderStatus.READY:
+        return Colors.teal;
       case OrderStatus.RIDER_ASSIGNED:
         return Colors.orange;
       case OrderStatus.RIDER_ACCEPTED:

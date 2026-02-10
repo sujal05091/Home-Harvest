@@ -37,7 +37,14 @@ class AuthService {
           updatedAt: DateTime.now(),
         );
 
-        await _firestore.collection('users').doc(user.uid).set(newUser.toMap());
+        Map<String, dynamic> userMap = newUser.toMap();
+        
+        // 🚴 Set isOnline: false for riders initially
+        if (role == 'rider') {
+          userMap['isOnline'] = false;
+        }
+
+        await _firestore.collection('users').doc(user.uid).set(userMap);
         return newUser;
       }
     } catch (e) {
@@ -60,7 +67,18 @@ class AuthService {
 
       User? user = result.user;
       if (user != null) {
-        return await getUserData(user.uid);
+        final userData = await getUserData(user.uid);
+        
+        // 🚴 If rider is logging in, set them as online automatically
+        if (userData != null && userData.role == 'rider') {
+          await _firestore.collection('users').doc(user.uid).update({
+            'isOnline': true,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          print('✅ Rider set to ONLINE status on login');
+        }
+        
+        return userData;
       }
     } catch (e) {
       print('Error during sign in: $e');
@@ -124,6 +142,23 @@ class AuthService {
 
   // Sign out
   Future<void> signOut() async {
+    // 🚴 Set rider to offline before signing out
+    final user = _auth.currentUser;
+    if (user != null) {
+      try {
+        final userData = await getUserData(user.uid);
+        if (userData != null && userData.role == 'rider') {
+          await _firestore.collection('users').doc(user.uid).update({
+            'isOnline': false,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          print('✅ Rider set to OFFLINE status on logout');
+        }
+      } catch (e) {
+        print('⚠️ Error updating online status during logout: $e');
+      }
+    }
+    
     await _auth.signOut();
   }
 

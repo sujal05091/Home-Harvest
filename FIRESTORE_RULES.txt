@@ -50,6 +50,8 @@ service cloud.firestore {
         request.auth.uid == resource.data.cookId ||
         request.auth.uid == resource.data.riderId ||
         request.auth.uid == resource.data.assignedRiderId ||
+        // Allow riders to read PLACED orders (unassigned orders available to accept)
+        resource.data.status == 'PLACED' ||
         // Allow riders to read orders they've been notified about (PLACED status)
         (resource.data.status == 'PLACED' && request.auth.uid in resource.data.get('notifiedRiders', [])) ||
         // Allow assigned riders to read RIDER_ASSIGNED orders

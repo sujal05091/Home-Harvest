@@ -11,12 +11,14 @@ class RoleSelectScreen extends StatelessWidget {
       onWillPop: () async => false, // Disable back button
       child: Scaffold(
         body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Lottie.asset(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 20),
+                  Lottie.asset(
                 'assets/lottie/role_selection.json',
                 width: 200,
                 height: 200,
@@ -94,9 +96,11 @@ class RoleSelectScreen extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 30),
             ],
           ),
         ),
+      ),
       ),
       ),
     );

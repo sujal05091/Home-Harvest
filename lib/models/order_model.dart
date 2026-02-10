@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 enum OrderStatus {
   PLACED,              // Order just placed, finding delivery partner
   ACCEPTED,            // Cook accepted the order
+  PREPARING,           // Cook is preparing the food
+  READY,               // Food is ready for pickup
   RIDER_ASSIGNED,      // System assigned a rider (rider not yet accepted)
   RIDER_ACCEPTED,      // Rider accepted the delivery (start GPS tracking)
   ON_THE_WAY_TO_PICKUP, // Rider moving to restaurant/home
@@ -70,6 +72,16 @@ class OrderModel {
   final DateTime? pickedUpAt;
   final DateTime? deliveredAt;
   final String? cancellationReason;
+  
+  // 🚀 PRODUCTION DELIVERY SYSTEM
+  final bool isActive;                   // Active delivery in progress
+  final double? distanceKm;              // Actual delivery distance
+  final double deliveryCharge;           // Total delivery cost
+  final double? riderEarning;            // Rider's share (80%)
+  final double? platformCommission;      // Platform's share (20%)
+  final double? cashCollected;           // COD: Cash collected by rider
+  final double? pendingSettlement;       // COD: Pending settlement with admin
+  final bool isSettled;                  // COD: Settlement completed
 
   OrderModel({
     required this.orderId,
@@ -97,6 +109,14 @@ class OrderModel {
     this.pickedUpAt,
     this.deliveredAt,
     this.cancellationReason,
+    this.isActive = false,
+    this.distanceKm,
+    this.deliveryCharge = 0.0,
+    this.riderEarning,
+    this.platformCommission,
+    this.cashCollected,
+    this.pendingSettlement,
+    this.isSettled = false,
   });
 
   factory OrderModel.fromMap(Map<String, dynamic> map, String orderId) {
@@ -132,6 +152,14 @@ class OrderModel {
       pickedUpAt: (map['pickedUpAt'] as Timestamp?)?.toDate(),
       deliveredAt: (map['deliveredAt'] as Timestamp?)?.toDate(),
       cancellationReason: map['cancellationReason'],
+      isActive: map['isActive'] ?? false,
+      distanceKm: (map['distanceKm'] as num?)?.toDouble(),
+      deliveryCharge: (map['deliveryCharge'] ?? 0).toDouble(),
+      riderEarning: (map['riderEarning'] as num?)?.toDouble(),
+      platformCommission: (map['platformCommission'] as num?)?.toDouble(),
+      cashCollected: (map['cashCollected'] as num?)?.toDouble(),
+      pendingSettlement: (map['pendingSettlement'] as num?)?.toDouble(),
+      isSettled: map['isSettled'] ?? false,
     );
   }
 
@@ -165,8 +193,14 @@ class OrderModel {
       'assignedAt': assignedAt != null ? Timestamp.fromDate(assignedAt!) : null,
       'pickedUpAt': pickedUpAt != null ? Timestamp.fromDate(pickedUpAt!) : null,
       'deliveredAt': deliveredAt != null ? Timestamp.fromDate(deliveredAt!) : null,
-      'cancellationReason': cancellationReason,
-    };
+      'cancellationReason': cancellationReason,      'isActive': isActive,
+      'distanceKm': distanceKm,
+      'deliveryCharge': deliveryCharge,
+      'riderEarning': riderEarning,
+      'platformCommission': platformCommission,
+      'cashCollected': cashCollected,
+      'pendingSettlement': pendingSettlement,
+      'isSettled': isSettled,    };
   }
 
   OrderModel copyWith({
@@ -179,6 +213,14 @@ class OrderModel {
     DateTime? pickedUpAt,
     DateTime? deliveredAt,
     String? cancellationReason,
+    bool? isActive,
+    double? distanceKm,
+    double? deliveryCharge,
+    double? riderEarning,
+    double? platformCommission,
+    double? cashCollected,
+    double? pendingSettlement,
+    bool? isSettled,
   }) {
     return OrderModel(
       orderId: orderId,
@@ -206,6 +248,14 @@ class OrderModel {
       pickedUpAt: pickedUpAt ?? this.pickedUpAt,
       deliveredAt: deliveredAt ?? this.deliveredAt,
       cancellationReason: cancellationReason ?? this.cancellationReason,
+      isActive: isActive ?? this.isActive,
+      distanceKm: distanceKm ?? this.distanceKm,
+      deliveryCharge: deliveryCharge ?? this.deliveryCharge,
+      riderEarning: riderEarning ?? this.riderEarning,
+      platformCommission: platformCommission ?? this.platformCommission,
+      cashCollected: cashCollected ?? this.cashCollected,
+      pendingSettlement: pendingSettlement ?? this.pendingSettlement,
+      isSettled: isSettled ?? this.isSettled,
     );
   }
 }

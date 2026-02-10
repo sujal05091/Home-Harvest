@@ -10,6 +10,7 @@ class OSMMapWidget extends StatefulWidget {
   final List<Polyline> polylines;
   final Function(LatLng)? onTap;
   final Function(LatLng)? onLongPress;
+  final Function(MapCamera, bool)? onPositionChanged;
   final bool showMyLocationButton;
   final VoidCallback? onMyLocationPressed;
   final MapController? mapController;
@@ -22,6 +23,7 @@ class OSMMapWidget extends StatefulWidget {
     this.polylines = const [],
     this.onTap,
     this.onLongPress,
+    this.onPositionChanged,
     this.showMyLocationButton = false,
     this.onMyLocationPressed,
     this.mapController,
@@ -55,6 +57,7 @@ class _OSMMapWidgetState extends State<OSMMapWidget> {
             onLongPress: widget.onLongPress != null
                 ? (tapPosition, latLng) => widget.onLongPress!(latLng)
                 : null,
+            onPositionChanged: widget.onPositionChanged,
           ),
           children: [
             // CartoDB Positron tiles (Clean & Professional)
