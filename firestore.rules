@@ -1,4 +1,4 @@
-  rules_version = '2';
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
@@ -88,12 +88,13 @@ service cloud.firestore {
       // 📦 ORDERS - Role-Based Access with State Validation
       // ═════════════════════════════════════════════════════════════════════
       match /orders/{orderId} {
-        // Read: Customer, Cook, Assigned Rider, Any Rider for active orders, or Admin
+        // Read: Customer, Cook, Assigned Rider, Any authenticated user for READY orders, or Admin
+        // Removed isRider() check to avoid extra Firestore read
         allow read: if isAuthenticated() && (
           resource.data.customerId == request.auth.uid ||
           resource.data.cookId == request.auth.uid ||
           resource.data.assignedRiderId == request.auth.uid ||
-          (isRider() && resource.data.status in ['READY', 'RIDER_ASSIGNED', 'RIDER_ACCEPTED', 'ON_THE_WAY_TO_PICKUP', 'PICKED_UP', 'ON_THE_WAY_TO_DROP']) ||
+          resource.data.status in ['READY', 'RIDER_ASSIGNED', 'RIDER_ACCEPTED', 'ON_THE_WAY_TO_PICKUP', 'PICKED_UP', 'ON_THE_WAY_TO_DROP'] ||
           isAdmin()
         );
         
@@ -121,9 +122,18 @@ service cloud.firestore {
           request.resource.data.status in ['ACCEPTED', 'PREPARING', 'READY', 'RIDER_ASSIGNED', 'CANCELLED'] &&
           isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
           
-          // RIDER (ASSIGNED): Can update status after being assigned
+          // RIDER CASE A: Unassigned rider accepts READY order (READY → RIDER_ASSIGNED)
+          // Removed isRider() to avoid extra document read during transaction
+          (resource.data.status == 'READY' &&
+          ('isActive' in resource.data ? resource.data.isActive == true : true) &&
+          (!('assignedRiderId' in resource.data) || resource.data.assignedRiderId == null || resource.data.assignedRiderId == '') &&
+          request.resource.data.status == 'RIDER_ASSIGNED' &&
+          request.resource.data.assignedRiderId == request.auth.uid &&
+          isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
+          
+          // RIDER CASE B: Assigned rider updates delivery status
+          // Removed isRider() to avoid extra document read during transaction
           (resource.data.assignedRiderId == request.auth.uid &&
-          isRider() &&
           request.resource.data.status in [
             'RIDER_ACCEPTED',
             'ON_THE_WAY_TO_PICKUP',
@@ -131,15 +141,6 @@ service cloud.firestore {
             'ON_THE_WAY_TO_DROP',
             'DELIVERED'
           ] &&
-          isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
-          
-          // RIDER (UNASSIGNED): Can accept READY orders by assigning themselves
-          (isRider() &&
-          resource.data.status == 'READY' &&
-          ('isActive' in resource.data ? resource.data.isActive == true : true) &&
-          (!('assignedRiderId' in resource.data) || resource.data.assignedRiderId == null || resource.data.assignedRiderId == '') &&
-          request.resource.data.status == 'RIDER_ASSIGNED' &&
-          request.resource.data.assignedRiderId == request.auth.uid &&
           isValidStatusTransition(resource.data.status, request.resource.data.status))
         );
         
@@ -220,29 +221,11 @@ service cloud.firestore {
       // 💰 COOK WALLETS - Real Money Management
       // ═══════════════════════════════════════════════════════════════════════
       match /cook_wallets/{cookId} {
-        // Read: Cook can read own wallet, Riders can read to credit payments, Admins can read all
-        allow read: if isAuthenticated() && (
-          request.auth.uid == cookId ||  // Cook reads own wallet
-          isRider() ||  // Riders need to read wallet to credit payments
-          isAdmin()
-        );
+        // Read: Only the cook can read their own wallet
+        allow read: if isAuthenticated() && request.auth.uid == cookId;
         
-        // Create: Cook can create their own wallet during setup, Riders can create if not exists
-        allow create: if isAuthenticated() && (
-          request.auth.uid == cookId ||
-          isRider() ||  // Riders may need to create wallet if cook hasn't yet
-          isAdmin()
-        );
-        
-        // Update: Riders can credit wallets (for order payments), cooks can update own wallet, admins have full access
-        allow update: if isAuthenticated() && (
-          isRider() ||  // Riders need to pay cooks on delivery completion
-          request.auth.uid == cookId ||  // Cook can update own wallet
-          isAdmin()
-        );
-        
-        // Delete: Only admin
-        allow delete: if isAdmin();
+        // Write: Only system (via Cloud Functions) or admin
+        allow write: if isAdmin();
       }
       
       // Cook Wallet Transactions
@@ -251,14 +234,8 @@ service cloud.firestore {
         allow read: if isAuthenticated() && 
           resource.data.cookId == request.auth.uid;
         
-        // Create: Riders can create transaction records when paying cooks, admins can create
-        allow create: if isAuthenticated() && (
-          isRider() ||  // Riders create transactions when completing deliveries
-          isAdmin()
-        );
-        
-        // Update/Delete: Only admin
-        allow update, delete: if isAdmin();
+        // Write: Only system or admin
+        allow write: if isAdmin();
       }
       
       // Cook Withdrawal Requests
@@ -518,5 +495,3 @@ service cloud.firestore {
       }
     }
   }
-
-
