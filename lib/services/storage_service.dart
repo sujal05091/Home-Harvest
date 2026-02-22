@@ -81,7 +81,7 @@ class StorageService {
         CloudinaryResponse response = await _cloudinary.uploadFile(
           CloudinaryFile.fromFile(
             imageFiles[i].path,
-            folder: 'home_harvest/verifications/$userId',
+            folder: 'home_harvest/cook_verification/$userId/images',
             resourceType: CloudinaryResourceType.Image,
           ),
         );
@@ -91,6 +91,58 @@ class StorageService {
       return imageUrls;
     } catch (e) {
       throw Exception('Failed to upload verification images: $e');
+    }
+  }
+
+  /// Pick a video from gallery (max 60 seconds recommended)
+  Future<File?> pickVideo() async {
+    try {
+      final XFile? pickedFile = await _picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(seconds: 60), // Max 60 seconds
+      );
+
+      if (pickedFile != null) {
+        File videoFile = File(pickedFile.path);
+        
+        // Check file size (max 50MB)
+        int fileSize = await videoFile.length();
+        const int maxSize = 50 * 1024 * 1024; // 50MB in bytes
+        
+        if (fileSize > maxSize) {
+          throw Exception('Video size exceeds 50MB limit. Please select a shorter video.');
+        }
+        
+        return videoFile;
+      }
+      return null;
+    } catch (e) {
+      throw Exception('Failed to pick video: $e');
+    }
+  }
+
+  /// Upload verification video to Cloudinary (max 50MB)
+  Future<String> uploadVerificationVideo(File videoFile, String userId) async {
+    try {
+      // Verify file size again before upload
+      int fileSize = await videoFile.length();
+      const int maxSize = 50 * 1024 * 1024; // 50MB
+      
+      if (fileSize > maxSize) {
+        throw Exception('Video size exceeds 50MB limit');
+      }
+
+      CloudinaryResponse response = await _cloudinary.uploadFile(
+        CloudinaryFile.fromFile(
+          videoFile.path,
+          folder: 'home_harvest/cook_verification/$userId/video',
+          resourceType: CloudinaryResourceType.Video,
+        ),
+      );
+      
+      return response.secureUrl;
+    } catch (e) {
+      throw Exception('Failed to upload verification video: $e');
     }
   }
 

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'app_router.dart';
 import 'theme.dart';
@@ -14,6 +15,7 @@ import 'providers/rider_provider.dart';
 import 'providers/favorites_provider.dart';
 import 'services/notification_service.dart';
 import 'services/fcm_service.dart';
+import 'services/rider_notification_listener.dart';
 import 'widgets/app_background.dart';
 
 // TODO: Replace with your Firebase configuration
@@ -40,14 +42,19 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         FlutterLocalNotificationsPlugin();
     
     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'delivery_requests_channel',
+      'delivery_requests',
       'Delivery Requests',
-      channelDescription: 'Notifications for new delivery requests',
+      channelDescription: 'New delivery request notifications',
       importance: Importance.max,
-      priority: Priority.high,
+      priority: Priority.max,
       showWhen: true,
       enableVibration: true,
       playSound: true,
+      fullScreenIntent: true, // 🆕 Shows even when screen is locked
+      category: AndroidNotificationCategory.call, // 🆕 Treat as incoming call
+      visibility: NotificationVisibility.public, // 🆕 Show on lock screen
+      ongoing: true, // 🆕 Cannot be dismissed by swiping
+      autoCancel: false, // 🆕 Stays until tapped
     );
     
     const NotificationDetails notificationDetails = 
@@ -126,6 +133,11 @@ class _MyAppState extends State<MyApp> {
     super.initState();
     // 🚀 Set navigator key for FCM service to enable foreground navigation
     FCMService.setNavigatorKey(MyApp.navigatorKey);
+    
+    // 🔔 Initialize notification listener for riders
+    // NOTE: Actual listener starts in RiderHomeScreen after auth confirmation
+    RiderNotificationListener().initialize(MyApp.navigatorKey);
+    
     _setupNotificationRouting();
   }
   
@@ -141,9 +153,9 @@ class _MyAppState extends State<MyApp> {
         _showLocalNotification(message);
       }
       
-      // Auto-navigate if it's a delivery request
+      // Navigate to request screen for delivery requests
       if (message.data['type'] == 'NEW_DELIVERY_REQUEST') {
-        _handleNotificationNavigation(message.data);
+        _handleDeliveryRequestNotification(message.data);
       }
     });
     
@@ -151,10 +163,10 @@ class _MyAppState extends State<MyApp> {
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       print('📱 Background notification tapped');
       print('   Data: ${message.data}');
-      _handleNotificationNavigation(message.data);
+      _handleDeliveryRequestNotification(message.data);
     });
     
-    // 🔔 TERMINATED: Check if app was opened from a terminated state via notification
+    // 🔔 TERMINATED: Check if app was opened from a terminated state via notification  
     FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
       if (message != null) {
         print('📱 App opened from terminated state via notification');
@@ -162,26 +174,31 @@ class _MyAppState extends State<MyApp> {
         
         // Delay navigation to ensure app is fully loaded
         Future.delayed(const Duration(seconds: 2), () {
-          _handleNotificationNavigation(message.data);
+          _handleDeliveryRequestNotification(message.data);
         });
       }
     });
   }
   
-  /// Show local notification in foreground
+  /// Show local notification in foreground with FULL SCREEN INTENT
   Future<void> _showLocalNotification(RemoteMessage message) async {
     final FlutterLocalNotificationsPlugin localNotifications = 
         FlutterLocalNotificationsPlugin();
     
     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'delivery_requests_channel',
+      'delivery_requests',
       'Delivery Requests',
-      channelDescription: 'Notifications for new delivery requests',
+      channelDescription: 'New delivery request notifications',
       importance: Importance.max,
-      priority: Priority.high,
+      priority: Priority.max,
       showWhen: true,
       enableVibration: true,
       playSound: true,
+      fullScreenIntent: true, // 🆕 Shows even when screen is locked
+      category: AndroidNotificationCategory.call, // 🆕 Treat as incoming call
+      visibility: NotificationVisibility.public, // 🆕 Show on lock screen
+      ongoing: true, // 🆕 Cannot be dismissed by swiping
+      autoCancel: false, // 🆕 Stays until tapped
       icon: '@mipmap/ic_launcher',
     );
     
@@ -195,6 +212,29 @@ class _MyAppState extends State<MyApp> {
       notificationDetails,
       payload: message.data['orderId'],
     );
+  }
+  
+  /// 🚨 Handle delivery request notification with POP-UP (Normal Food Only)
+  /// DOES NOT TOUCH TIFFIN SERVICE
+  Future<void> _handleDeliveryRequestNotification(Map<String, dynamic> data) async {
+    final orderId = data['orderId'];
+    
+    if (orderId == null) {
+      print('⚠️ No orderId in notification data');
+      return;
+    }
+    
+    print('🍽️ Handling delivery request for order: $orderId');
+    
+    try {
+      // Navigate to delivery request screen (same for both tiffin and normal food)
+      MyApp.navigatorKey.currentState?.pushNamed(
+        AppRouter.riderDeliveryRequest,
+        arguments: {'orderId': orderId},
+      );
+    } catch (e) {
+      print('❌ Error handling delivery notification: $e');
+    }
   }
   
   void _handleNotificationNavigation(Map<String, dynamic> data) {

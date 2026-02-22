@@ -1,19 +1,34 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/order_model.dart';
+import 'firestore_service.dart';
 
-/// 🤖 Rider Assignment Service
+/// 🤖 Rider Assignment Service (AUTO-ASSIGNMENT)
 /// 
-/// Automatically assigns nearest available rider to new orders
+/// ⚠️ IMPORTANT: This is for AUTO-ASSIGNMENT only (e.g., for Tiffin service)
 /// 
-/// IMPORTANT: In production, use Cloud Functions for this logic!
-/// This is a simplified version for testing purposes.
+/// For NORMAL FOOD delivery:
+/// - DO NOT use auto-assignment
+/// - Use MANUAL RIDER ACCEPTANCE instead
+/// - Orders appear in rider's available orders list when status = READY
+/// - First rider to accept gets the order (transaction-based)
+/// 
+/// AUTO-ASSIGNMENT FLOW (for Tiffin or special cases):
+/// 1. Cook marks food READY (status = READY)
+/// 2. This service detects status = READY
+/// 3. Finds nearest available rider
+/// 4. Updates order to RIDER_ASSIGNED
+/// 5. Sends notification to rider
+/// 
+/// PRODUCTION NOTE: Use Cloud Functions for auto-assignment in production!
+/// This client-side version is for development/testing only.
 class RiderAssignmentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirestoreService _firestoreService = FirestoreService();
 
-  /// Assign nearest available rider to an order
+  /// Assign nearest available rider to an order that is READY
   /// 
-  /// Call this after order is created with status = PLACED
+  /// Only works if order status = READY (food is prepared and ready for pickup)
   /// 
   /// Example:
   /// ```dart
@@ -31,12 +46,15 @@ class RiderAssignmentService {
 
       final order = OrderModel.fromFirestore(orderDoc);
 
-      if (order.status != OrderStatus.PLACED) {
-        print('⚠️ Order status is not PLACED, skipping assignment');
+      // ⚠️ CRITICAL: Only assign if food is READY
+      if (order.status != OrderStatus.READY) {
+        print('⚠️ Order status is ${order.status.name}, expected READY. Skipping assignment.');
         return;
       }
 
-      // 2. Get all available riders
+      print('🍽️ Food is ready for order $orderId. Finding nearest rider...');
+
+      // 2. Get all available riders who are online
       final ridersSnapshot = await _firestore
           .collection('users')
           .where('role', isEqualTo: 'rider')
@@ -44,10 +62,10 @@ class RiderAssignmentService {
           .get();
 
       if (ridersSnapshot.docs.isEmpty) {
-        throw Exception('No available riders found');
+        throw Exception('No available riders online');
       }
 
-      // 3. Find nearest rider
+      // 3. Find nearest rider to PICKUP location (cook/restaurant)
       String? nearestRiderId;
       String? nearestRiderName;
       String? nearestRiderPhone;
@@ -83,17 +101,25 @@ class RiderAssignmentService {
         throw Exception('Could not calculate rider distances');
       }
 
-      // 4. Update order with rider assignment
-      await _firestore.collection('orders').doc(orderId).update({
-        'status': OrderStatus.RIDER_ASSIGNED.name,
-        'assignedRiderId': nearestRiderId,
-        'assignedRiderName': nearestRiderName ?? 'Unknown Rider',
-        'assignedRiderPhone': nearestRiderPhone ?? 'N/A',
-        'assignedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      // 4. Update order with rider assignment using proper method
+      await _firestoreService.assignRiderToOrder(
+        orderId: orderId,
+        riderId: nearestRiderId,
+        riderName: nearestRiderName ?? 'Unknown Rider',
+        riderPhone: nearestRiderPhone,
+      );
 
-      // 5. Create delivery document
+      // 5. Calculate delivery distance for earnings
+      final dropLat = order.dropLocation.latitude;
+      final dropLng = order.dropLocation.longitude;
+      final deliveryDistanceKm = Geolocator.distanceBetween(
+        pickupLat,
+        pickupLng,
+        dropLat,
+        dropLng,
+      ) / 1000;
+
+      // 6. Create delivery document
       await _firestore.collection('deliveries').doc(orderId).set({
         'deliveryId': orderId,
         'orderId': orderId,
@@ -105,17 +131,18 @@ class RiderAssignmentService {
         'status': 'ASSIGNED',
         'pickupLocation': order.pickupLocation,
         'dropLocation': order.dropLocation,
-        'deliveryFee': 40.0,
-        'distanceKm': minDistance,
-        'estimatedMinutes': (minDistance * 3).round(), // Rough estimate
+        'distanceKm': deliveryDistanceKm,
+        'riderToPickupDistanceKm': minDistance, // Distance rider needs to travel to pickup
+        'estimatedMinutes': (deliveryDistanceKm * 3).round(), // Rough estimate: 3 min per km
         'assignedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
       print('✅ Assigned rider $nearestRiderName to order $orderId');
-      print('📦 Created delivery document for order $orderId');
-      print('📍 Distance: ${minDistance.toStringAsFixed(1)} km');
+      print('📦 Created delivery document');
+      print('📍 Pickup distance: ${minDistance.toStringAsFixed(1)} km');
+      print('📍 Delivery distance: ${deliveryDistanceKm.toStringAsFixed(1)} km');
 
       // TODO: Send push notification to rider
       // await _sendNotificationToRider(nearestRiderId, orderId);
@@ -126,9 +153,10 @@ class RiderAssignmentService {
     }
   }
 
-  /// Listen to new orders and auto-assign riders
+  /// Listen to READY orders and auto-assign riders
   /// 
   /// For testing only! In production, use Cloud Functions
+  /// This watches for orders that change to READY status
   /// 
   /// Example:
   /// ```dart
@@ -136,18 +164,26 @@ class RiderAssignmentService {
   /// service.startAutoAssignment();
   /// ```
   void startAutoAssignment() {
+    print('🚀 Starting auto-assignment service (watching for READY orders)...');
+    
     _firestore
         .collection('orders')
-        .where('status', isEqualTo: OrderStatus.PLACED.name)
+        .where('status', isEqualTo: OrderStatus.READY.name)
         .snapshots()
         .listen((snapshot) {
       for (var change in snapshot.docChanges) {
-        if (change.type == DocumentChangeType.added) {
+        if (change.type == DocumentChangeType.added || 
+            change.type == DocumentChangeType.modified) {
           final orderId = change.doc.id;
-          print('🆕 New order detected: $orderId');
-          assignNearestRider(orderId).catchError((e) {
-            print('❌ Auto-assignment failed for $orderId: $e');
-          });
+          final data = change.doc.data();
+          
+          // Only assign if not already assigned
+          if (data?['assignedRiderId'] == null) {
+            print('🍽️ Food ready detected for order: $orderId');
+            assignNearestRider(orderId).catchError((e) {
+              print('❌ Auto-assignment failed for $orderId: $e');
+            });
+          }
         }
       }
     });

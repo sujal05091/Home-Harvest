@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/dishes_provider.dart';
 import '../../providers/orders_provider.dart';
 import '../../providers/favorites_provider.dart';
+import '../../providers/auth_provider.dart' as auth;
 
 class DishDetailScreen extends StatefulWidget {
   final String dishId;
@@ -17,6 +18,20 @@ class DishDetailScreen extends StatefulWidget {
 class _DishDetailScreenState extends State<DishDetailScreen> {
   int _quantity = 1;
   bool _showFullDescription = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<auth.AuthProvider>(context, listen: false);
+      final userId = authProvider.currentUser?.uid;
+      
+      // Load favorites if user is logged in
+      if (userId != null) {
+        Provider.of<FavoritesProvider>(context, listen: false).loadFavorites(userId);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -135,32 +150,39 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                                 ),
                               ),
 
-                              // Favorite button
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.1),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
+                              // Favorite button - Wrapped in Consumer
+                              Consumer<FavoritesProvider>(
+                                builder: (context, favProvider, _) {
+                                  final isFav = favProvider.isDishFavorite(dish.dishId);
+                                  print('🔄 Heart button rebuilt - isFav: $isFav for ${dish.dishId}');
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                                child: IconButton(
-                                  icon: Icon(
-                                    isFavorite
-                                        ? Icons.favorite
-                                        : Icons.favorite_border,
-                                    color: isFavorite
-                                        ? const Color(0xFFFC8019)
-                                        : Colors.black87,
-                                  ),
-                                  onPressed: () {
-                                    favoritesProvider.toggleDishFavorite(dish.dishId);
-                                  },
-                                ),
+                                    child: IconButton(
+                                      icon: Icon(
+                                        isFav
+                                            ? Icons.favorite
+                                            : Icons.favorite_border,
+                                        color: isFav
+                                            ? Colors.red
+                                            : Colors.black87,
+                                      ),
+                                      onPressed: () {
+                                        print('❤️ Heart clicked for: ${dish.dishId}');
+                                        favProvider.toggleDishFavorite(dish.dishId);
+                                      },
+                                    ),
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -251,7 +273,7 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                                           Text(
                                             'By ${dish.cookName}',
                                             style: TextStyle(
-                                              fontSize: 14,
+                                              fontSize: 12,
                                               color: Colors.grey[600],
                                               fontWeight: FontWeight.w500,
                                             ),
@@ -269,7 +291,7 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                                             child: Text(
                                               'HOME COOKED',
                                               style: TextStyle(
-                                                fontSize: 10,
+                                                fontSize: 7,
                                                 fontWeight: FontWeight.bold,
                                                 color: const Color(0xFF27AE60),
                                                 letterSpacing: 0.5,
@@ -373,9 +395,9 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                                   ),
                                   _buildStatItem(
                                     icon: Icons.local_fire_department,
-                                    iconColor: const Color(0xFFFC8019),
-                                    label: 'Calories',
-                                    value: '124 Kcal',
+                                    iconColor: const Color.fromARGB(255, 58, 169, 15),
+                                    label: 'Freshness',
+                                    value: '100% Fresh',
                                   ),
                                   Container(
                                     width: 1,
@@ -500,11 +522,11 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                               text: TextSpan(
                                 children: [
                                   TextSpan(
-                                    text: '\$ ',
+                                    text: '₹ ',
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
-                                      color: const Color(0xFFFC8019),
+                                      color: const Color.fromARGB(255, 224, 104, 7),
                                     ),
                                   ),
                                   TextSpan(
@@ -513,7 +535,7 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                                     style: const TextStyle(
                                       fontSize: 28,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFFFC8019),
+                                      color: Color.fromARGB(255, 15, 10, 5),
                                     ),
                                   ),
                                 ],

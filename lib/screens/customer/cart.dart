@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/orders_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dishes_provider.dart';
@@ -69,14 +70,7 @@ class _CartScreenState extends State<CartScreen> {
                           ),
                         ),
                       ),
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          shape: BoxShape.circle,
-                        ),
-                      ),
+                      const SizedBox(width: 48), // Spacer for alignment
                     ],
                   ),
                 ),
@@ -146,12 +140,37 @@ class _CartScreenState extends State<CartScreen> {
                             ),
                           ),
                         ),
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            shape: BoxShape.circle,
+                        // Clear Cart Button
+                        TextButton.icon(
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Clear Cart?'),
+                                content: const Text('Are you sure you want to remove all items from your cart?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      ordersProvider.clearCart();
+                                      Navigator.pop(context);
+                                    },
+                                    child: const Text(
+                                      'Clear',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                          label: const Text(
+                            'Clear',
+                            style: TextStyle(color: Colors.red, fontSize: 14),
                           ),
                         ),
                       ],
@@ -180,19 +199,11 @@ class _CartScreenState extends State<CartScreen> {
                                 ),
                                 child: Stack(
                                   children: [
-                                    // Background Image (placeholder gradient)
-                                    Container(
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            const Color(0xFFFC8019).withOpacity(0.7),
-                                            const Color(0xFFFC8019).withOpacity(0.3),
-                                          ],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        ),
+                                    // Background Image
+                                    Positioned.fill(
+                                      child: Image.asset(
+                                        'assets/images/vocher.png',
+                                        fit: BoxFit.cover,
                                       ),
                                     ),
                                     // Gradient Overlay
@@ -241,7 +252,7 @@ class _CartScreenState extends State<CartScreen> {
                                                       style: TextStyle(fontWeight: FontWeight.w500),
                                                     ),
                                                     TextSpan(
-                                                      text: '\$30',
+                                                      text: '₹500',
                                                       style: TextStyle(
                                                         fontSize: 18,
                                                         color: const Color(0xFFFC8019),
@@ -339,8 +350,9 @@ class _CartScreenState extends State<CartScreen> {
                           Text(
                             'Order Total',
                             style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey[600],
+                              fontSize: 18,
+                              color: Colors.black,
+          
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -349,7 +361,7 @@ class _CartScreenState extends State<CartScreen> {
                               style: const TextStyle(fontSize: 16),
                               children: [
                                 TextSpan(
-                                  text: '\$ ',
+                                  text: '₹ ',
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: const Color(0xFFFC8019),
@@ -359,7 +371,8 @@ class _CartScreenState extends State<CartScreen> {
                                 TextSpan(
                                   text: ordersProvider.cartTotal.toStringAsFixed(2),
                                   style: const TextStyle(
-                                    fontSize: 22,
+                                    fontSize: 32,
+                                    color : Colors.black,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -481,7 +494,7 @@ class _CartScreenState extends State<CartScreen> {
                               style: const TextStyle(fontSize: 16),
                               children: [
                                 TextSpan(
-                                  text: '\$ ',
+                                  text: '₹ ',
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: const Color(0xFFFC8019),
@@ -522,11 +535,14 @@ class _CartScreenState extends State<CartScreen> {
                                 onTap: () {
                                   if (item.quantity > 1) {
                                     ordersProvider.updateCartItemQuantity(item.dishId, item.quantity - 1);
+                                  } else {
+                                    // Remove item from cart when quantity is 1
+                                    ordersProvider.removeFromCart(item.dishId);
                                   }
                                 },
                                 child: Icon(
-                                  Icons.remove,
-                                  color: item.quantity > 1 ? Colors.black : Colors.grey[400],
+                                  item.quantity > 1 ? Icons.remove : Icons.delete_outline,
+                                  color: item.quantity > 1 ? Colors.black : Colors.red,
                                   size: 20,
                                 ),
                               ),
@@ -604,7 +620,32 @@ class _CartScreenState extends State<CartScreen> {
         throw Exception('Failed to load details');
       }
 
-      // 🗺️ Calculate ACTUAL ROAD DISTANCE using OSRM (not straight line!)
+      // ⚠️ CRITICAL VALIDATION: Check coordinates BEFORE calling OSRM
+      final pickupLat = dish.location.latitude;
+      final pickupLng = dish.location.longitude;
+      final dropLat = _selectedAddress!.location.latitude;
+      final dropLng = _selectedAddress!.location.longitude;
+      
+      print('📍 [Cart] DEBUG - Pickup GeoPoint: $pickupLat, $pickupLng');
+      print('📍 [Cart] DEBUG - Drop GeoPoint: $dropLat, $dropLng');
+      
+      // Validate coordinates are not null, zero, or out of range
+      if (pickupLat == 0 || pickupLng == 0 || dropLat == 0 || dropLng == 0) {
+        throw Exception('⚠️ Invalid coordinates detected! Pickup or Drop location has 0,0 coordinates');
+      }
+      
+      if (pickupLat < -90 || pickupLat > 90 || dropLat < -90 || dropLat > 90) {
+        throw Exception('⚠️ Invalid latitude! Must be between -90 and 90');
+      }
+      
+      if (pickupLng < -180 || pickupLng > 180 || dropLng < -180 || dropLng > 180) {
+        throw Exception('⚠️ Invalid longitude! Must be between -180 and 180');
+      }
+      
+      print('✅ [Cart] Coordinates validated successfully');
+
+      // ✅ FIX: Calculate ACTUAL ROAD DISTANCE using OSRM (not straight line!)
+      
       final pickupLocation = LatLng(
         dish.location.latitude, 
         dish.location.longitude,
@@ -614,13 +655,17 @@ class _CartScreenState extends State<CartScreen> {
         _selectedAddress!.location.longitude,
       );
       
+      print('🗺️ [Cart] Fetching route from OSRM...');
+      print('   Start: ${pickupLocation.latitude}, ${pickupLocation.longitude}');
+      print('   End: ${dropLocation.latitude}, ${dropLocation.longitude}');
+      
       // Fetch route info with real road distance from OSRM API
       final routeInfo = await RouteService.getRouteInfo(
         start: pickupLocation,
         end: dropLocation,
       );
       
-      print('🚗 [Cart] OSRM Route: ${routeInfo.distanceInKm.toStringAsFixed(2)} km (${routeInfo.distanceInMeters.toStringAsFixed(0)} meters)');
+      print('✅ [Cart] OSRM Route Result: ${routeInfo.distanceInKm.toStringAsFixed(2)} km (${routeInfo.distanceInMeters.toStringAsFixed(0)} meters)');
       
       final distanceKm = routeInfo.distanceInKm; // Use actual road distance in KM
       
@@ -632,22 +677,42 @@ class _CartScreenState extends State<CartScreen> {
         orderType: OrderType.NORMAL_FOOD,
       );
 
+      // For NORMAL FOOD: Platform commission = 10% of food price
+      // Food price = cart total (before adding delivery charge)
+      final foodPrice = ordersProvider.cartTotal;
+      final platformCommissionFromFood = foodPrice * 0.10; // 10% of food price
+
       setState(() {
         _firstDish = dish;
         _distance = distanceKm; // Store road distance in kilometers
         _deliveryCharge = pricing['deliveryCharge'];
-        _riderEarning = pricing['riderEarning'];
-        _platformCommission = pricing['platformCommission'];
+        _riderEarning = pricing['riderEarning']; // 100% of delivery charge for Normal Food
+        _platformCommission = platformCommissionFromFood; // 10% of food price
         _isLoadingDetails = false;
       });
     } catch (e) {
+      print('❌ [Cart] Error loading delivery details: $e');
+      
       setState(() {
         _isLoadingDetails = false;
       });
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error calculating delivery charge: $e')),
+          SnackBar(
+            content: Text(
+              e.toString().contains('0,0 coordinates')
+                  ? '⚠️ Invalid dish location! Cook needs to update restaurant address.'
+                  : '❌ Error calculating delivery: ${e.toString()}',
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
         );
       }
     }
@@ -672,6 +737,25 @@ class _CartScreenState extends State<CartScreen> {
     print('🔄 [Cart] Loading state set to true');
 
     try {
+      // Save food total BEFORE any operations (in case cart state changes)
+      final foodTotal = ordersProvider.cartTotal;
+      final cartItemsList = List<OrderItem>.from(ordersProvider.cartItems);
+      
+      // Fetch cook's phone number from Firestore
+      String? cookPhone;
+      try {
+        final cookDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_firstDish!.cookId)
+            .get();
+        if (cookDoc.exists) {
+          cookPhone = cookDoc.data()?['phone'];
+          print('📞 [Cart] Cook phone: $cookPhone');
+        }
+      } catch (e) {
+        print('⚠️ [Cart] Failed to fetch cook phone: $e');
+      }
+      
       final order = OrderModel(
         orderId: '',
         customerId: authProvider.currentUser!.uid,
@@ -679,8 +763,9 @@ class _CartScreenState extends State<CartScreen> {
         customerPhone: authProvider.currentUser!.phone,
         cookId: _firstDish!.cookId,
         cookName: _firstDish!.cookName,
-        dishItems: ordersProvider.cartItems,
-        total: ordersProvider.cartTotal + _deliveryCharge!,
+        cookPhone: cookPhone,
+        dishItems: cartItemsList,
+        total: foodTotal + _deliveryCharge!,
         paymentMethod: 'COD',
         status: OrderStatus.PLACED,
         pickupAddress: '${_firstDish!.cookName}\'s Kitchen',
@@ -704,24 +789,32 @@ class _CartScreenState extends State<CartScreen> {
       print('📦 [Cart] Order created with ID: $orderId');
       
       if (orderId != null && mounted) {
-        print('🚀 [Cart] Starting FCM notification process for order: $orderId');
-        
-        // 🚀 Send FCM notifications to nearby riders
+        // ✅ Notify cook about new order
         try {
-          print('📍 [Cart] Pickup location: ${_firstDish!.location.latitude}, ${_firstDish!.location.longitude}');
+          print('🔔 [Cart] Notifying cook about new order...');
+          final dishNames = cartItemsList
+              .map((item) => item.dishName)
+              .join(', ');
           
-          await FCMService().notifyNearbyRiders(
+          await FCMService().notifyCook(
+            cookId: _firstDish!.cookId,
             orderId: orderId,
-            pickupLat: _firstDish!.location.latitude,
-            pickupLng: _firstDish!.location.longitude,
-            radiusKm: 5.0,
+            customerName: authProvider.currentUser!.name,
+            dishNames: dishNames,
+            totalAmount: foodTotal,  // ✅ Using saved food total
           );
-          print('✅ [Cart] FCM notifications sent to nearby riders');
-        } catch (e, stackTrace) {
-          print('⚠️ [Cart] FCM notification failed: $e');
-          print('   Stack trace: $stackTrace');
-          // Continue anyway - riders can still see orders in their dashboard
+          print('✅ [Cart] Cook notification sent with amount: ₹$foodTotal');
+        } catch (e) {
+          print('❌ [Cart] Failed to notify cook: $e');
         }
+        
+        // ✅ [NORMAL FOOD WORKFLOW FIX - Issue #2]
+        // DO NOT notify riders immediately!
+        // Correct flow: PLACED → Cook Accepts → PREPARING → READY → Riders notified
+        // Riders will ONLY see orders when cook marks them READY
+        print('✅ [Cart] Order placed with status=PLACED');
+        print('   ⏳ Waiting for cook to accept and prepare food');
+        print('   🔔 Riders will be notified when cook marks food READY');
         
         print('🧭 [Cart] Navigating to Finding Partner screen...');
         // Navigate to Finding Partner screen for real-time tracking

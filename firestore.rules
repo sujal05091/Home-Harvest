@@ -1,373 +1,522 @@
-rules_version = '2';
+  rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
     // ═════════════════════════════════════════════════════════════════════
     // 🔐 HELPER FUNCTIONS
-    // ═════════════════════════════════════════════════════════════════════
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    function isUser(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-    
-    function isAdmin() {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-    
-    function isCook() {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'cook';
-    }
-    
-    function isRider() {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider';
-    }
-    
-    function isCustomer() {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer';
-    }
-    
-    // Valid order status transitions
-    function isValidStatusTransition(oldStatus, newStatus) {
-      return (oldStatus == 'PLACED' && newStatus in ['ACCEPTED', 'CANCELLED']) ||
-             (oldStatus == 'ACCEPTED' && newStatus in ['RIDER_ASSIGNED', 'CANCELLED']) ||
-             (oldStatus == 'RIDER_ASSIGNED' && newStatus in ['RIDER_ACCEPTED', 'PLACED', 'CANCELLED']) ||
-             (oldStatus == 'RIDER_ACCEPTED' && newStatus in ['ON_THE_WAY_TO_PICKUP', 'CANCELLED']) ||
-             (oldStatus == 'ON_THE_WAY_TO_PICKUP' && newStatus == 'PICKED_UP') ||
-             (oldStatus == 'PICKED_UP' && newStatus == 'ON_THE_WAY_TO_DROP') ||
-             (oldStatus == 'ON_THE_WAY_TO_DROP' && newStatus == 'DELIVERED') ||
-             (oldStatus == 'CANCELLED' && newStatus == 'CANCELLED') ||
-             (oldStatus == 'DELIVERED' && newStatus == 'DELIVERED');
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 🚀 RIDER LOCATIONS (Real-time GPS tracking)
-    // ═════════════════════════════════════════════════════════════════════
-    match /rider_locations/{riderId} {
-      // Anyone authenticated can read (for live tracking)
-      allow read: if isAuthenticated();
+      // ═════════════════════════════════════════════════════════════════════
+      function isAuthenticated() {
+        return request.auth != null;
+      }
       
-      // Only the rider themselves OR admin can write their location
-      allow write: if isUser(riderId) || isAdmin();
-    }
-    
-    match /riderLocations/{riderId} {
-      allow read: if isAuthenticated();
-      allow write: if isUser(riderId) || isAdmin();
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 📦 ORDERS - Role-Based Access with State Validation
-    // ═════════════════════════════════════════════════════════════════════
-    match /orders/{orderId} {
-      // Read: Customer, Cook, Assigned Rider, or Admin
-      allow read: if isAuthenticated() && (
-        resource.data.customerId == request.auth.uid ||
-        resource.data.cookId == request.auth.uid ||
-        resource.data.assignedRiderId == request.auth.uid ||
-        isAdmin()
-      );
+      function isUser(userId) {
+        return isAuthenticated() && request.auth.uid == userId;
+      }
       
-      // Create: Only customers can create orders
-      allow create: if isAuthenticated() && 
-        isCustomer() &&
-        request.resource.data.customerId == request.auth.uid &&
-        request.resource.data.status == 'PLACED';
+      function isAdmin() {
+        return isAuthenticated() && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      }
       
-      // Update with strict role-based permissions and status validation
-      allow update: if isAuthenticated() && (
-        // ADMIN: Full access
-        isAdmin() ||
-        
-        // CUSTOMER: Can only cancel their own orders
-        (resource.data.customerId == request.auth.uid && 
-         isCustomer() &&
-         request.resource.data.status == 'CANCELLED' &&
-         isValidStatusTransition(resource.data.status, 'CANCELLED')) ||
-        
-        // COOK: Can accept/reject orders assigned to them
-        (resource.data.cookId == request.auth.uid && 
-         isCook() &&
-         request.resource.data.status in ['ACCEPTED', 'RIDER_ASSIGNED', 'CANCELLED'] &&
-         isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
-        
-        // RIDER (ASSIGNED): Can update status after being assigned
-        (resource.data.assignedRiderId == request.auth.uid &&
-         isRider() &&
-         request.resource.data.status in [
-           'RIDER_ACCEPTED',
-           'ON_THE_WAY_TO_PICKUP',
-           'PICKED_UP',
-           'ON_THE_WAY_TO_DROP',
-           'DELIVERED'
-         ] &&
-         isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
-         
-        // RIDER (UNASSIGNED): Can accept orders or reject them
-        (isRider() &&
-         request.resource.data.status in ['RIDER_ACCEPTED', 'RIDER_ASSIGNED'] &&
-         request.resource.data.keys().hasAny(['assignedRiderId', 'assignedRiderName', 'rejectedBy', 'notifiedRiders']) &&
-         isValidStatusTransition(resource.data.status, request.resource.data.status))
-      );
+      function isCook() {
+        return isAuthenticated() && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'cook';
+      }
       
-      // Delete: Only admins
-      allow delete: if isAdmin();
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 👥 USERS - Profile Management with Role Protection
-    // ═════════════════════════════════════════════════════════════════════
-    match /users/{userId} {
-      // Read: Anyone authenticated (for names, finding riders, etc.)
-      allow read: if isAuthenticated();
+      function isRider() {
+        return isAuthenticated() && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider';
+      }
       
-      // Create: During signup
-      allow create: if isAuthenticated() && 
-        request.auth.uid == userId;
+      function isCustomer() {
+        return isAuthenticated() && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer';
+      }
       
-      // Update: User can update their own profile
-      // CRITICAL: Users CANNOT change their own role (only admin can)
-      allow update: if isAuthenticated() && (
-        // User updates own profile (except role)
-        (isUser(userId) && 
-         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isVerified'])) ||
-        
-        // Admin can update anyone's profile including role and verification
-        isAdmin()
-      );
+      // Valid order status transitions
+      function isValidStatusTransition(oldStatus, newStatus) {
+        return (oldStatus == 'PLACED' && newStatus in ['ACCEPTED', 'CANCELLED']) ||
+              (oldStatus == 'ACCEPTED' && newStatus in ['PREPARING', 'RIDER_ASSIGNED', 'CANCELLED']) ||
+              (oldStatus == 'PREPARING' && newStatus in ['READY', 'CANCELLED']) ||
+              (oldStatus == 'READY' && newStatus in ['RIDER_ASSIGNED', 'RIDER_ACCEPTED', 'CANCELLED']) ||
+              (oldStatus == 'RIDER_ASSIGNED' && newStatus in ['RIDER_ACCEPTED', 'ON_THE_WAY_TO_PICKUP', 'PLACED', 'CANCELLED']) ||
+              (oldStatus == 'RIDER_ACCEPTED' && newStatus in ['ON_THE_WAY_TO_PICKUP', 'CANCELLED']) ||
+              (oldStatus == 'ON_THE_WAY_TO_PICKUP' && newStatus == 'PICKED_UP') ||
+              (oldStatus == 'PICKED_UP' && newStatus == 'ON_THE_WAY_TO_DROP') ||
+              (oldStatus == 'ON_THE_WAY_TO_DROP' && newStatus == 'DELIVERED') ||
+              (oldStatus == 'CANCELLED' && newStatus == 'CANCELLED') ||
+              (oldStatus == 'DELIVERED' && newStatus == 'DELIVERED');
+      }
       
-      // Delete: Only admin
-      allow delete: if isAdmin();
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 🍽️ DISHES - Cook-Only Management
-    // ═════════════════════════════════════════════════════════════════════
-    match /dishes/{dishId} {
-      // Read: Anyone authenticated
-      allow read: if isAuthenticated();
-      
-      // Create: Only verified cooks
-      allow create: if isAuthenticated() && 
-        isCook() &&
-        request.resource.data.cookId == request.auth.uid &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified == true;
-      
-      // Update/Delete: Only the cook who owns the dish OR admin
-      allow update, delete: if isAuthenticated() && (
-        (resource.data.cookId == request.auth.uid && isCook()) ||
-        isAdmin()
-      );
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 📝 REVIEWS - Customer-Only Creation
-    // ═════════════════════════════════════════════════════════════════════
-    match /reviews/{reviewId} {
-      // Read: Anyone authenticated
-      allow read: if isAuthenticated();
-      
-      // Create: Only customers who placed the order
-      allow create: if isAuthenticated() && 
-        isCustomer() &&
-        request.resource.data.customerId == request.auth.uid;
-      
-      // Update/Delete: Only the review author OR admin
-      allow update, delete: if isAuthenticated() && (
-        (resource.data.customerId == request.auth.uid && isCustomer()) ||
-        isAdmin()
-      );
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 📧 VERIFICATION REQUESTS - Cook Verification System
-    // ═════════════════════════════════════════════════════════════════════
-    match /verifications/{verificationId} {
-      // Read: The cook who submitted OR admin
-      allow read: if isAuthenticated() && (
-        resource.data.cookId == request.auth.uid ||
-        isAdmin()
-      );
-      
-      // Create: Only cooks can submit verification
-      allow create: if isAuthenticated() && 
-        isCook() &&
-        request.resource.data.cookId == request.auth.uid;
-      
-      // Update: Only admin can approve/reject
-      allow update: if isAdmin();
-      
-      // Delete: Only admin
-      allow delete: if isAdmin();
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 💬 CHATS - Participant-Only Access
-    // ═════════════════════════════════════════════════════════════════════
-    match /chats/{chatId} {
-      // Read: Only participants
-      allow read: if isAuthenticated() && (
-        request.auth.uid in resource.data.participantIds
-      );
-      
-      // Create: Authenticated users
-      allow create: if isAuthenticated() && (
-        request.auth.uid in request.resource.data.participantIds
-      );
-      
-      // Update: Participants only
-      allow update: if isAuthenticated() && (
-        request.auth.uid in resource.data.participantIds
-      );
-      
-      // Messages subcollection
-      match /messages/{messageId} {
+      // ═════════════════════════════════════════════════════════════════════
+      // 👥 USERS - Profile Management with Role Protection
+      // ═════════════════════════════════════════════════════════════════════
+      match /users/{userId} {
+        // Read: Anyone authenticated (for names, finding riders, etc.)
         allow read: if isAuthenticated();
-        allow create: if isAuthenticated() && (
-          request.resource.data.senderId == request.auth.uid
+        
+        // Create: During signup
+        allow create: if isAuthenticated() && 
+          request.auth.uid == userId;
+        
+        // Update: User can update their own profile
+        // CRITICAL: Users CANNOT change their own role (only admin can)
+        allow update: if isAuthenticated() && (
+          // User updates own profile (except role)
+          (isUser(userId) && 
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isVerified'])) ||
+          
+          // Admin can update anyone's profile including role and verification
+          isAdmin() ||
+          
+          // Allow FCM token, online status, and location updates from any authenticated user
+          (isAuthenticated() &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['fcmToken', 'isOnline', 'currentLocation', 'fcmTokenUpdatedAt', 'lastActive'])) ||
+          
+          // Allow verification status updates by admin
+          (isAdmin() && 
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['verificationStatus', 'verified', 'verifiedAt', 'rejectionReason', 'updatedAt']))
+        );
+        
+        // Delete: Only admin
+        allow delete: if isAdmin();
+      }
+      
+      // ═════════════════════════════════════════════════════════════════════
+      // 📦 ORDERS - Role-Based Access with State Validation
+      // ═════════════════════════════════════════════════════════════════════
+      match /orders/{orderId} {
+        // Read: Customer, Cook, Assigned Rider, Any Rider for active orders, or Admin
+        allow read: if isAuthenticated() && (
+          resource.data.customerId == request.auth.uid ||
+          resource.data.cookId == request.auth.uid ||
+          resource.data.assignedRiderId == request.auth.uid ||
+          (isRider() && resource.data.status in ['READY', 'RIDER_ASSIGNED', 'RIDER_ACCEPTED', 'ON_THE_WAY_TO_PICKUP', 'PICKED_UP', 'ON_THE_WAY_TO_DROP']) ||
+          isAdmin()
+        );
+        
+        // Create: Only customers can create orders
+        // Allow 'PLACED' for normal orders and 'READY' for tiffin/home-to-office orders
+        allow create: if isAuthenticated() && 
+          isCustomer() &&
+          request.resource.data.customerId == request.auth.uid &&
+          request.resource.data.status in ['PLACED', 'READY'];
+        
+        // Update with strict role-based permissions and status validation
+        allow update: if isAuthenticated() && (
+          // ADMIN: Full access
+          isAdmin() ||
+          
+          // CUSTOMER: Can only cancel their own orders
+          (resource.data.customerId == request.auth.uid && 
+          isCustomer() &&
+          request.resource.data.status == 'CANCELLED' &&
+          isValidStatusTransition(resource.data.status, 'CANCELLED')) ||
+          
+          // COOK: Can accept/reject orders and update preparation status
+          (resource.data.cookId == request.auth.uid && 
+          isCook() &&
+          request.resource.data.status in ['ACCEPTED', 'PREPARING', 'READY', 'RIDER_ASSIGNED', 'CANCELLED'] &&
+          isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
+          
+          // RIDER (ASSIGNED): Can update status after being assigned
+          (resource.data.assignedRiderId == request.auth.uid &&
+          isRider() &&
+          request.resource.data.status in [
+            'RIDER_ACCEPTED',
+            'ON_THE_WAY_TO_PICKUP',
+            'PICKED_UP',
+            'ON_THE_WAY_TO_DROP',
+            'DELIVERED'
+          ] &&
+          isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
+          
+          // RIDER (UNASSIGNED): Can accept READY orders by assigning themselves
+          (isRider() &&
+          resource.data.status == 'READY' &&
+          ('isActive' in resource.data ? resource.data.isActive == true : true) &&
+          (!('assignedRiderId' in resource.data) || resource.data.assignedRiderId == null || resource.data.assignedRiderId == '') &&
+          request.resource.data.status == 'RIDER_ASSIGNED' &&
+          request.resource.data.assignedRiderId == request.auth.uid &&
+          isValidStatusTransition(resource.data.status, request.resource.data.status))
+        );
+        
+        // Delete: Only admins
+        allow delete: if isAdmin();
+      }
+      
+      // ═════════════════════════════════════════════════════════════════════
+      // 🍽️ DISHES - Cook-Only Management (✅ FIXED FOR VERIFICATION)
+      // ═════════════════════════════════════════════════════════════════════
+      match /dishes/{dishId} {
+        // Read: Anyone authenticated
+        allow read: if isAuthenticated();
+        
+        // ✅ Create: Only verified/approved cooks can add dishes
+        allow create: if isAuthenticated() && 
+          isCook() &&
+          request.resource.data.cookId == request.auth.uid &&
+          (
+            // Check new verification system (verificationStatus == 'APPROVED')
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'APPROVED' ||
+            // OR check legacy verification system (verified == true) for backward compatibility
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verified == true
+          );
+        
+        // Update: Cook who owns the dish OR admin can update anything
+        // OR any authenticated user can update rating fields (for review system)
+        allow update: if isAuthenticated();
+        
+        // Delete: Only the cook who owns the dish OR admin
+        allow delete: if isAuthenticated() && (
+          (resource.data.cookId == request.auth.uid && isCook()) ||
+          isAdmin()
         );
       }
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 📍 ADDRESSES - User-Only Access
-    // ═════════════════════════════════════════════════════════════════════
-    match /addresses/{addressId} {
-      allow read: if isAuthenticated() && 
-        resource.data.userId == request.auth.uid;
+      
+      // ═════════════════════════════════════════════════════════════════════
+      // 🔔 NOTIFICATIONS - Flexible Access for Push Notifications
+      // ═════════════════════════════════════════════════════════════════════
+      match /notifications/{notificationId} {
+        // Any authenticated user can read notifications (for debugging and rider notifications)
+        allow read: if isAuthenticated();
         
-      allow create: if isAuthenticated() && 
-        request.resource.data.userId == request.auth.uid;
+        // Any authenticated user can create notifications (customer/system creating notification for rider)
+        allow create: if isAuthenticated();
         
-      allow update, delete: if isAuthenticated() && 
-        resource.data.userId == request.auth.uid;
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 🚚 DELIVERIES - Real-time Tracking Data
-    // ═════════════════════════════════════════════════════════════════════
-    match /deliveries/{deliveryId} {
-      // Read: Customer, Cook, Rider, or Admin
-      allow read: if isAuthenticated();
+        // Any authenticated user can update notifications (rider marking as read, system updates)
+        allow update: if isAuthenticated();
+        
+        // Any authenticated user can delete notifications or admin
+        allow delete: if isAuthenticated();
+      }
       
-      // Write: Only assigned rider OR admin can update delivery data
-      allow create, update: if isAuthenticated() && (
-        isRider() ||
-        isAdmin()
-      );
+      // ═══════════════════════════════════════════════════════════════════════
+      // 📧 VERIFICATION REQUESTS - Cook Verification System (✅ FIXED)
+      // ═══════════════════════════════════════════════════════════════════════
+      match /cook_verifications/{verificationId} {
+        // Read: The cook who submitted OR admin
+        allow read: if isAuthenticated() && (
+          resource.data.cookId == request.auth.uid ||
+          isAdmin()
+        );
+        
+        // Create: Only cooks can submit verification
+        allow create: if isAuthenticated() && 
+          isCook() &&
+          request.resource.data.cookId == request.auth.uid &&
+          request.resource.data.status == 'PENDING';
+        
+        // Update: Only admin can approve/reject
+        allow update: if isAdmin();
+        
+        // Delete: Only admin
+        allow delete: if isAdmin();
+      }
       
-      // Delete: Only admin
-      allow delete: if isAdmin();
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 🔔 NOTIFICATIONS - Recipient-Only Access
-    // ═════════════════════════════════════════════════════════════════════
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && 
-        resource.data.recipientId == request.auth.uid;
+      // ═══════════════════════════════════════════════════════════════════════
+      // 💰 COOK WALLETS - Real Money Management
+      // ═══════════════════════════════════════════════════════════════════════
+      match /cook_wallets/{cookId} {
+        // Read: Cook can read own wallet, Riders can read to credit payments, Admins can read all
+        allow read: if isAuthenticated() && (
+          request.auth.uid == cookId ||  // Cook reads own wallet
+          isRider() ||  // Riders need to read wallet to credit payments
+          isAdmin()
+        );
+        
+        // Create: Cook can create their own wallet during setup, Riders can create if not exists
+        allow create: if isAuthenticated() && (
+          request.auth.uid == cookId ||
+          isRider() ||  // Riders may need to create wallet if cook hasn't yet
+          isAdmin()
+        );
+        
+        // Update: Riders can credit wallets (for order payments), cooks can update own wallet, admins have full access
+        allow update: if isAuthenticated() && (
+          isRider() ||  // Riders need to pay cooks on delivery completion
+          request.auth.uid == cookId ||  // Cook can update own wallet
+          isAdmin()
+        );
+        
+        // Delete: Only admin
+        allow delete: if isAdmin();
+      }
       
-      allow create: if isAuthenticated();
+      // Cook Wallet Transactions
+      match /cook_wallet_transactions/{transactionId} {
+        // Read: Only the owner cook can read their transactions
+        allow read: if isAuthenticated() && 
+          resource.data.cookId == request.auth.uid;
+        
+        // Create: Riders can create transaction records when paying cooks, admins can create
+        allow create: if isAuthenticated() && (
+          isRider() ||  // Riders create transactions when completing deliveries
+          isAdmin()
+        );
+        
+        // Update/Delete: Only admin
+        allow update, delete: if isAdmin();
+      }
       
-      allow update: if isAuthenticated() && 
-        resource.data.recipientId == request.auth.uid;
+      // Cook Withdrawal Requests
+      match /cook_withdrawal_requests/{withdrawalId} {
+        // Read: The requesting cook or admin
+        allow read: if isAuthenticated() && (
+          resource.data.cookId == request.auth.uid ||
+          isAdmin()
+        );
+        
+        // Create: Only cooks can create withdrawal requests
+        allow create: if isAuthenticated() && 
+          isCook() &&
+          request.resource.data.cookId == request.auth.uid &&
+          request.resource.data.status == 'PENDING';
+        
+        // Update: Only admin can approve/reject/pay
+        allow update: if isAdmin();
+        
+        // Delete: Only admin
+        allow delete: if isAdmin();
+      }
       
-      allow delete: if isAuthenticated() && (
-        resource.data.recipientId == request.auth.uid ||
-        isAdmin()
-      );
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 🔧 ADMIN-ONLY COLLECTIONS
-    // ═════════════════════════════════════════════════════════════════════
-    match /analytics/{document=**} {
-      allow read, write: if isAdmin();
-    }
-    
-    match /config/{document=**} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    match /notification_errors/{document=**} {
-      allow read, write: if isAdmin();
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 💰 RIDER WALLETS - Rider & Admin Only
-    // ═════════════════════════════════════════════════════════════════════
-    match /rider_wallets/{riderId} {
-      // Read: Only the rider or admin
-      allow read: if isAuthenticated() && (
-        request.auth.uid == riderId ||
-        isAdmin()
-      );
+      // ═════════════════════════════════════════════════════════════════════
+      // 💳 SUBSCRIPTIONS - Admin Panel Feature
+      // ═════════════════════════════════════════════════════════════════════
+      match /subscriptions/{subscriptionId} {
+        allow read: if isAuthenticated() && (
+          resource.data.customerId == request.auth.uid ||
+          resource.data.cookId == request.auth.uid ||
+          isAdmin()
+        );
+        allow create: if isAuthenticated();
+        allow update: if isAuthenticated() && (
+          resource.data.customerId == request.auth.uid ||
+          isAdmin()
+        );
+        allow delete: if isAdmin();
+      }
       
-      // Create: System or admin only (prevent manual wallet creation)
-      allow create: if isAdmin();
+      // ═════════════════════════════════════════════════════════════════════
+      // 💬 SUPPORT TICKETS - Admin Panel Feature
+      // ═════════════════════════════════════════════════════════════════════
+      match /support_tickets/{ticketId} {
+        allow read: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          isAdmin()
+        );
+        allow create: if isAuthenticated();
+        allow update: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          isAdmin()
+        );
+        allow delete: if isAdmin();
+      }
       
-      // Update: Only through Cloud Functions or admin
-      // Riders CANNOT directly update their wallet balance
-      allow update: if isAdmin();
+      // ═════════════════════════════════════════════════════════════════════
+      // ⚙️ PLATFORM SETTINGS - Admin Panel Configuration
+      // ═════════════════════════════════════════════════════════════════════
+      match /platform_settings/{document=**} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin();
+      }
       
-      // Delete: Admin only
-      allow delete: if isAdmin();
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 💳 WALLET TRANSACTIONS - Read-Only for Riders
-    // ═════════════════════════════════════════════════════════════════════
-    match /wallet_transactions/{transactionId} {
-      // Read: Only the rider who owns the transaction or admin
-      allow read: if isAuthenticated() && (
-        resource.data.riderId == request.auth.uid ||
-        isAdmin()
-      );
+      // ═════════════════════════════════════════════════════════════════════
+      // 💰 WALLET TRANSACTIONS - Admin Panel Feature
+      // ═════════════════════════════════════════════════════════════════════
+      match /wallet_transactions/{transactionId} {
+        // Rider can read their own transactions, Admin can read all
+        allow read: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          resource.data.riderId == request.auth.uid ||
+          isAdmin()
+        );
+        
+        // System/Admin can create transactions (during credit/debit)
+        allow create: if isAuthenticated();
+        
+        // Only admin can update/delete
+        allow update, delete: if isAdmin();
+      }
       
-      // Create: System only (Cloud Functions)
-      allow create: if false;
+      // ═════════════════════════════════════════════════════════════════════
+      // 💸 WITHDRAWAL REQUESTS - Admin Panel Feature
+      // ═════════════════════════════════════════════════════════════════════
+      match /withdrawal_requests/{requestId} {
+        // Rider can read their own requests, Admin can read all
+        allow read: if isAuthenticated() && (
+          resource.data.riderId == request.auth.uid ||
+          resource.data.userId == request.auth.uid ||
+          isAdmin()
+        );
+        
+        // Rider can create withdrawal requests
+        allow create: if isAuthenticated() && (
+          request.resource.data.riderId == request.auth.uid ||
+          request.resource.data.userId == request.auth.uid
+        );
+        
+        // Rider can update their own pending requests, Admin can approve/reject any
+        allow update: if isAuthenticated() && (
+          resource.data.riderId == request.auth.uid ||
+          resource.data.userId == request.auth.uid ||
+          isAdmin()
+        );
+        
+        // Only admin can delete
+        allow delete: if isAdmin();
+      }
       
-      // Update/Delete: Admin only
-      allow update, delete: if isAdmin();
-    }
-    
-    // ═════════════════════════════════════════════════════════════════════
-    // 💸 WITHDRAWAL REQUESTS - Rider creates, Admin approves
-    // ═════════════════════════════════════════════════════════════════════
-    match /withdrawal_requests/{requestId} {
-      // Read: Only the requesting rider or admin
-      allow read: if isAuthenticated() && (
-        resource.data.riderId == request.auth.uid ||
-        isAdmin()
-      );
+      // ═════════════════════════════════════════════════════════════════════
+      // 🚀 RIDER LOCATIONS (Real-time GPS tracking)
+      // ═════════════════════════════════════════════════════════════════════
+      match /rider_locations/{riderId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
       
-      // Create: Only riders can create withdrawal requests
-      allow create: if isAuthenticated() && 
-        isRider() &&
-        request.resource.data.riderId == request.auth.uid &&
-        request.resource.data.status == 'PENDING' &&
-        request.resource.data.amount >= 100 &&  // Minimum ₹100
-        request.resource.data.amount <= 50000;  // Maximum ₹50,000
+      match /riderLocations/{riderId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
       
-      // Update: Only admin (for approval/rejection)
-      allow update: if isAdmin();
+      // ═════════════════════════════════════════════════════════════════════
+      // 📍 ADDRESSES - User-Only Access
+      // ═════════════════════════════════════════════════════════════════════
+      match /addresses/{addressId} {
+        allow read: if isAuthenticated() && 
+          resource.data.userId == request.auth.uid;
+          
+        allow create: if isAuthenticated() && 
+          request.resource.data.userId == request.auth.uid;
+          
+        allow update, delete: if isAuthenticated() && 
+          resource.data.userId == request.auth.uid;
+      }
       
-      // Delete: Admin only
-      allow delete: if isAdmin();
-    }
-    
-    // ===================
-    // DEFAULT: Deny all
-    // ===================
-    match /{document=**} {
-      allow read, write: if false;
+      // ═════════════════════════════════════════════════════════════════════
+      // 📝 REVIEWS - Customer-Only Creation
+      // ═════════════════════════════════════════════════════════════════════
+      match /reviews/{reviewId} {
+        allow read: if isAuthenticated();
+        // Allow any authenticated user to create review (they placed order = they can review)
+        allow create: if isAuthenticated() && 
+          request.resource.data.customerId == request.auth.uid;
+        // Allow user to update/delete their own review, or admin can manage all
+        allow update, delete: if isAuthenticated() && (
+          resource.data.customerId == request.auth.uid ||
+          isAdmin()
+        );
+      }
+      
+      // ═════════════════════════════════════════════════════════════════════
+      // 💬 CHATS - Participant-Only Access
+      // ═════════════════════════════════════════════════════════════════════
+      match /chats/{chatId} {
+        allow read: if isAuthenticated() && (
+          request.auth.uid in resource.data.participantIds
+        );
+        allow create: if isAuthenticated() && (
+          request.auth.uid in request.resource.data.participantIds
+        );
+        allow update: if isAuthenticated() && (
+          request.auth.uid in resource.data.participantIds
+        );
+        
+        match /messages/{messageId} {
+          allow read: if isAuthenticated();
+          allow create: if isAuthenticated() && (
+            request.resource.data.senderId == request.auth.uid
+          );
+        }
+      }
+      
+      // ═════════════════════════════════════════════════════════════════════
+      // ⭐ FAVORITES - User's Saved Dishes and Cooks
+      // ═════════════════════════════════════════════════════════════════════
+      match /favorites/{userId} {
+        // Users can read their own favorites
+        allow read: if isAuthenticated() && (
+          request.auth.uid == userId ||
+          isAdmin()
+        );
+        
+        // Users can create/update their own favorites
+        allow create, update: if isAuthenticated() && request.auth.uid == userId;
+        
+        // Users can delete their own favorites
+        allow delete: if isAuthenticated() && request.auth.uid == userId;
+      }
+      
+      // ═════════════════════════════════════════════════════════════════════
+      // 🚚 DELIVERIES - Real-time Tracking Data
+      // ═════════════════════════════════════════════════════════════════════
+      match /deliveries/{deliveryId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if isAuthenticated();
+        allow delete: if isAdmin();
+      }
+      
+      // ═════════════════════════════════════════════════════════════════════
+      // 💰 RIDER WALLETS - Rider & Admin Only
+      // ═════════════════════════════════════════════════════════════════════
+      match /rider_wallets/{riderId} {
+        // Rider can read their own wallet, Admin can read all
+        allow read: if isAuthenticated() && (
+          request.auth.uid == riderId ||
+          isAdmin()
+        );
+        
+        // Rider can create their own wallet during initial setup
+        allow create: if isAuthenticated() && request.auth.uid == riderId;
+        
+        // Rider can update their own wallet (for transactions), Admin can update any wallet
+        allow update: if isAuthenticated() && (
+          request.auth.uid == riderId ||
+          isAdmin()
+        );
+        
+        // Only admin can delete wallets
+        allow delete: if isAdmin();
+      }
+      
+      // ═════════════════════════════════════════════════════════════════════
+      // 🔧 ADMIN-ONLY COLLECTIONS
+      // ═════════════════════════════════════════════════════════════════════
+      match /analytics/{document=**} {
+        allow read, write: if isAdmin();
+      }
+      
+      match /config/{document=**} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin();
+      }
+      
+      match /notification_errors/{document=**} {
+        allow read, write: if isAdmin();
+      }
+      
+      // ═════════════════════════════════════════════════════════════════════
+      // 💳 TRANSACTIONS - Financial Records
+      // ═════════════════════════════════════════════════════════════════════
+      match /transactions/{transactionId} {
+        allow read: if isAdmin() || 
+                    resource.data.userId == request.auth.uid ||
+                    resource.data.cookId == request.auth.uid ||
+                    resource.data.riderId == request.auth.uid;
+        allow write: if isAdmin();
+      }
+      
+      // ===================
+      // DEFAULT: Deny all
+      // ===================
+      match /{document=**} {
+        allow read, write: if false;
+      }
     }
   }
-}
+
+

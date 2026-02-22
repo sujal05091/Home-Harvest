@@ -13,6 +13,9 @@ import '../../theme.dart';
 import '../../widgets/osm_map_widget.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_map/flutter_map.dart';
+import '../../services/wallet_service.dart';
+import '../../services/cook_wallet_service.dart';
+import '../../app_router.dart';
 
 class RiderActiveDeliveryScreen extends StatefulWidget {
   final OrderModel order;
@@ -31,12 +34,16 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
   StreamSubscription<Position>? _locationSubscription;
   Timer? _locationUpdateTimer;
   Position? _lastPosition;
+  List<Polyline> _polylines = [];
+  List<Marker> _markers = [];
 
   @override
   void initState() {
     super.initState();
     // Initialize status based on order's current status
     _currentStatus = _getLocalStatusFromOrder(widget.order.status);
+    // Initialize route
+    _updateRoutePolyline();
     // Start tracking rider location
     _startLocationTracking();
   }
@@ -173,10 +180,43 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
         });
         print('✅ [Rider] Location updated successfully');
       }
+      
+      // Update route with current rider position
+      _lastPosition = position;
+      _updateRoutePolyline();
     } catch (e, stackTrace) {
       print('❌ [Rider] Error updating location: $e');
       print('Stack trace: $stackTrace');
     }
+  }
+
+  void _updateRoutePolyline() {
+    final order = widget.order;
+    final pickupLatLng = LatLng(
+      order.pickupLocation.latitude,
+      order.pickupLocation.longitude,
+    );
+    final dropLatLng = LatLng(
+      order.dropLocation.latitude,
+      order.dropLocation.longitude,
+    );
+
+    List<LatLng> routePoints = [];
+    
+    // If we have rider's current location, show: Pickup → Rider → Drop
+    if (_lastPosition != null) {
+      final riderLatLng = LatLng(_lastPosition!.latitude, _lastPosition!.longitude);
+      routePoints = [pickupLatLng, riderLatLng, dropLatLng];
+    } else {
+      // Otherwise just show: Pickup → Drop
+      routePoints = [pickupLatLng, dropLatLng];
+    }
+
+    setState(() {
+      _polylines = [
+        PolylineHelper.createRoute(points: routePoints), // Orange color by default
+      ];
+    });
   }
 
   String _getLocalStatusFromOrder(OrderStatus orderStatus) {
@@ -212,7 +252,7 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
               order.pickupLocation.longitude,
             ),
             markers: _buildMapMarkers(order),
-            polylines: [],
+            polylines: _polylines,
           ),
 
           // Top Info Card
@@ -414,7 +454,7 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
                   title: 'Pickup from',
                   subtitle: order.pickupAddress,
                   showCallButton: true,
-                  phoneNumber: '+91 98765 43210', // Cook's phone
+                  phoneNumber: order.cookPhone ?? '+91 98765 43210',
                   isPrimary: _currentStatus == 'heading_to_pickup',
                 ),
                 const SizedBox(height: 12),
@@ -826,9 +866,39 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context); // Close dialog
+              // ⚠️ Get navigator and data BEFORE closing dialog to avoid widget disposal errors
+              final navigator = Navigator.of(context);
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              final authProvider = Provider.of<AuthProvider>(context, listen: false);
+              final riderId = authProvider.currentUser!.uid;
+              
+              navigator.pop(); // Close dialog
               
               try {
+                // Fetch order to get rider and cook earnings
+                final orderDoc = await FirebaseFirestore.instance
+                    .collection('orders')
+                    .doc(widget.order.orderId)
+                    .get();
+                final orderData = orderDoc.data() ?? {};
+                final riderEarning = (orderData['riderEarning'] ?? 0.0) as num;
+                final cookId = orderData['cookId'] as String?;
+                
+                // Calculate foodSubtotal from dish items OR use saved value
+                double foodSubtotal = 0.0;
+                if (orderData.containsKey('foodSubtotal')) {
+                  foodSubtotal = (orderData['foodSubtotal'] as num?)?.toDouble() ?? 0.0;
+                } else {
+                  // Calculate from dish items if not saved
+                  final dishItems = orderData['dishItems'] as List<dynamic>? ?? [];
+                  for (var item in dishItems) {
+                    final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                    final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+                    foodSubtotal += (price * quantity);
+                  }
+                  print('📊 [Cook] Calculated foodSubtotal from dish items: ₹$foodSubtotal');
+                }
+                
                 // Update order status to DELIVERED
                 await FirebaseFirestore.instance
                     .collection('orders')
@@ -847,20 +917,62 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
                   'status': DeliveryStatus.DELIVERED.name,
                   'deliveredAt': FieldValue.serverTimestamp(),
                   'updatedAt': FieldValue.serverTimestamp(),
+                  'isActive': false,
                 });
-
-                Navigator.pop(context); // Return to home
                 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Order delivered successfully! ₹${((widget.order.total * 0.1).toStringAsFixed(0))} earned'),
-                    backgroundColor: AppTheme.successGreen,
-                  ),
+                // Credit rider's wallet with delivery earnings
+                final walletService = WalletService();
+                await walletService.creditWallet(
+                  riderId: riderId,
+                  amount: riderEarning.toDouble(),
+                  orderId: widget.order.orderId,
+                  description: 'Delivery completed - Order #${widget.order.orderId.substring(0, 8)}',
                 );
+                
+                print('✅ Delivery completed! Rider earned ₹${riderEarning.toStringAsFixed(2)}');
+                
+                // Credit cook's wallet with food earnings
+                if (cookId != null && foodSubtotal > 0) {
+                  print('💰 [Cook] Paying cook $cookId: ₹${foodSubtotal.toStringAsFixed(2)}');
+                  final cookWalletService = CookWalletService();
+                  await cookWalletService.creditWallet(
+                    cookId: cookId,
+                    amount: foodSubtotal,
+                    orderId: widget.order.orderId,
+                    description: 'Order earnings - Order #${widget.order.orderId.substring(0, 8)}',
+                  );
+                  print('✅ Cook earned ₹${foodSubtotal.toStringAsFixed(2)}');
+                } else {
+                  print('⚠️ [Cook] Payment skipped - cookId: $cookId, foodSubtotal: $foodSubtotal');
+                }
+
+                // � Auto-navigate back to Rider Home (PRODUCTION REQUIREMENT)
+                // Clear navigation stack and go to home screen
+                if (mounted) {
+                  navigator.pushNamedAndRemoveUntil(
+                    AppRouter.riderHome,
+                    (route) => false, // Clear all previous routes
+                  );
+                  
+                  // Show success message
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(
+                      content: Text('✅ Delivery completed! +₹${riderEarning.toStringAsFixed(2)} earned'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error updating delivery status: $e')),
-                );
+                print('❌ Error completing delivery: $e');
+                if (mounted) {
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Error: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(

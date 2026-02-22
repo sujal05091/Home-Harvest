@@ -572,6 +572,7 @@ class _TiffinCheckoutScreenState extends State<TiffinCheckoutScreen> {
         customerPhone: authProvider.currentUser!.phone,
         cookId: authProvider.currentUser!.uid,
         cookName: '${authProvider.currentUser!.name}\'s Family',
+        cookPhone: authProvider.currentUser!.phone, // For tiffin, user is also the cook
         dishItems: [
           OrderItem(
             dishId: 'tiffin',
@@ -582,7 +583,7 @@ class _TiffinCheckoutScreenState extends State<TiffinCheckoutScreen> {
         ],
         total: _deliveryCharge!,
         paymentMethod: _paymentMethod,
-        status: OrderStatus.PLACED,
+        status: OrderStatus.READY, // ✅ Tiffin orders go directly to READY (no cook needed)
         isHomeToOffice: true,
         pickupAddress: widget.homeAddress.fullAddress,
         pickupLocation: widget.homeAddress.location,
@@ -590,7 +591,7 @@ class _TiffinCheckoutScreenState extends State<TiffinCheckoutScreen> {
         dropLocation: widget.officeAddress.location,
         preferredTime: null,
         createdAt: DateTime.now(),
-        isActive: false,
+        isActive: true, // ✅ ACTIVE so riders can see and accept
         distanceKm: _distance!,
         deliveryCharge: _deliveryCharge!,
         riderEarning: _riderEarning!,

@@ -35,6 +35,14 @@ class RouteService {
     required LatLng end,
   }) async {
     try {
+      // ✅ VALIDATE COORDINATES BEFORE API CALL (Issue #1 Fix)
+      _validateCoordinates('Pickup', start.latitude, start.longitude);
+      _validateCoordinates('Drop', end.latitude, end.longitude);
+      
+      print('📍 [OSRM] Validated coordinates:');
+      print('   Pickup: ${start.latitude}, ${start.longitude}');
+      print('   Drop: ${end.latitude}, ${end.longitude}');
+      
       // OSRM route API format: /route/v1/driving/{lon},{lat};{lon},{lat}
       final url = Uri.parse(
         '$_osrmBaseUrl/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson',
@@ -70,6 +78,12 @@ class RouteService {
             distanceInMeters: distanceInMeters,
             durationInSeconds: durationInSeconds,
           );
+          
+          // ✅ VALIDATE DISTANCE RESULT (Issue #1 Fix)
+          if (routeInfo.distanceInKm > 100) {
+            print('⚠️ [OSRM] Distance too high: ${routeInfo.distanceInKm} km');
+            throw Exception('Invalid route distance: ${routeInfo.distanceInKm} km. Distance cannot exceed 100 km.');
+          }
           
           print('✅ [OSRM] Route fetched: ${routeInfo}');
           return routeInfo;
@@ -260,5 +274,27 @@ class RouteService {
     final latDiff = p2.latitude - p1.latitude;
     final lngDiff = p2.longitude - p1.longitude;
     return (latDiff * latDiff + lngDiff * lngDiff);
+  }
+  
+  /// ✅ VALIDATE COORDINATES (Issue #1 Fix)
+  /// Ensures coordinates are within valid ranges before API calls
+  /// Prevents invalid distance calculations (8000+ km bug)
+  static void _validateCoordinates(String label, double lat, double lng) {
+    // Check for null or zero coordinates (0,0 = Null Island)
+    if (lat == 0.0 && lng == 0.0) {
+      throw Exception('$label coordinates are invalid: 0,0 (Null Island). Please provide valid GeoPoint coordinates.');
+    }
+    
+    // Validate latitude range (-90 to 90)
+    if (lat < -90 || lat > 90) {
+      throw Exception('$label latitude out of range: $lat (must be between -90 and 90)');
+    }
+    
+    // Validate longitude range (-180 to 180)
+    if (lng < -180 || lng > 180) {
+      throw Exception('$label longitude out of range: $lng (must be between -180 and 180)');
+    }
+    
+    print('✅ [$label] Valid coordinates: $lat, $lng');
   }
 }

@@ -8,6 +8,7 @@ class DishModel {
   final String description;
   final List<String> ingredients;
   final List<String> allergens;
+  final List<String>? categories; // Meal types and categories (breakfast, lunch, dinner, etc.)
   final double price;
   final String imageUrl;
   final int availableSlots;
@@ -28,6 +29,7 @@ class DishModel {
     required this.description,
     required this.ingredients,
     required this.allergens,
+    this.categories, // Nullable categories for backward compatibility
     required this.price,
     required this.imageUrl,
     required this.availableSlots,
@@ -50,6 +52,7 @@ class DishModel {
       description: map['description'] ?? '',
       ingredients: List<String>.from(map['ingredients'] ?? []),
       allergens: List<String>.from(map['allergens'] ?? []),
+      categories: map['categories'] != null ? List<String>.from(map['categories']) : null,
       price: (map['price'] ?? 0).toDouble(),
       imageUrl: map['imageUrl'] ?? '',
       availableSlots: map['availableSlots'] ?? 0,
@@ -72,6 +75,7 @@ class DishModel {
       'description': description,
       'ingredients': ingredients,
       'allergens': allergens,
+      'categories': categories,
       'price': price,
       'imageUrl': imageUrl,
       'availableSlots': availableSlots,
@@ -100,6 +104,7 @@ class DishModel {
       description: description,
       ingredients: ingredients,
       allergens: allergens,
+      categories: categories,
       price: price,
       imageUrl: imageUrl,
       availableSlots: availableSlots ?? this.availableSlots,

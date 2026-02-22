@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:lottie/lottie.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,10 +11,17 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../providers/dishes_provider.dart';
+import '../../providers/favorites_provider.dart';
+import '../../providers/orders_provider.dart';
+import '../../providers/auth_provider.dart' as auth;
 import '../../app_router.dart';
 import '../../models/dish_model.dart';
 import '../../models/order_model.dart';
+import '../../models/cook_section_model.dart';
 import '../../widgets/filter_popup.dart';
+import '../../widgets/cook_section_card.dart';
+import '../../widgets/cart_summary_bar.dart';
+import '../../widgets/active_delivery_bar.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -22,29 +32,70 @@ class CustomerHomeScreen extends StatefulWidget {
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTickerProviderStateMixin {
   String _searchQuery = '';
-  String _selectedCategory = 'Veg Thali';
+  String _selectedCategory = 'Breakfast';
   bool _hasActiveDelivery = false;
   OrderModel? _activeOrder;
   late PageController _pageController;
   int _currentPage = 0;
+  Timer? _autoScrollTimer;
   String _currentLocation = 'Fetching location...';
   bool _isLoadingLocation = true;
+  StreamSubscription<QuerySnapshot>? _activeOrderSubscription; // Real-time listener
+  
+  // Filter state
+  String _sortBy = 'recommended';
+  List<String> _selectedFilterCategories = [];
+  double _maxPrice = 1000.0;
   
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: 0);
+    // Start at a high page number for infinite forward scrolling
+    _pageController = PageController(initialPage: 10000);
+    _currentPage = 10000;
+    _startAutoScroll();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<DishesProvider>(context, listen: false).loadDishes();
+      final authProvider = Provider.of<auth.AuthProvider>(context, listen: false);
+      final userId = authProvider.currentUser?.uid;
+      
+      // Load cook sections with grouped dishes
+      Provider.of<DishesProvider>(context, listen: false).loadCooksWithDishes();
+      
+      // Load favorites if user is logged in
+      if (userId != null) {
+        Provider.of<FavoritesProvider>(context, listen: false).loadFavorites(userId);
+      }
+      
       _checkActiveOrder();
+      _listenToActiveOrders(); // Start real-time listener
       _getCurrentLocation();
     });
   }
   
   @override
   void dispose() {
+    _autoScrollTimer?.cancel();
+    _activeOrderSubscription?.cancel(); // Cancel real-time listener
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _startAutoScroll() {
+    _autoScrollTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      // Always scroll forward to next page
+      final nextPage = _currentPage + 1;
+      
+      _pageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    });
   }
   
   // 🚀 Check for active delivery on app launch
@@ -75,7 +126,61 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
     }
   }
 
-  // 📍 Get user's current location
+  // � Real-time listener for active orders (updates when user comes back from tracking)
+  void _listenToActiveOrders() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+    
+    // Cancel existing subscription if any
+    _activeOrderSubscription?.cancel();
+    
+    // Calculate cutoff time (24 hours ago) to ignore old test data
+    final cutoffTime = Timestamp.fromDate(
+      DateTime.now().subtract(const Duration(hours: 24)),
+    );
+    
+    // Listen to active orders in real-time (only from last 24 hours)
+    _activeOrderSubscription = FirebaseFirestore.instance
+        .collection('orders')
+        .where('customerId', isEqualTo: userId)
+        .where('isActive', isEqualTo: true)
+        .where('createdAt', isGreaterThan: cutoffTime)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      
+      // Find active delivery order (not delivered or cancelled)
+      final activeOrders = snapshot.docs.where((doc) {
+        final status = doc.data()['status'] as String?;
+        return status != null && 
+               status != 'DELIVERED' && 
+               status != 'CANCELLED';
+      }).toList();
+      
+      if (activeOrders.isNotEmpty) {
+        final orderDoc = activeOrders.first;
+        final order = OrderModel.fromFirestore(orderDoc);
+        
+        setState(() {
+          _hasActiveDelivery = true;
+          _activeOrder = order;
+        });
+        
+        print('✅ Active delivery detected: ${order.orderId} | Status: ${order.status}');
+      } else {
+        setState(() {
+          _hasActiveDelivery = false;
+          _activeOrder = null;
+        });
+        
+        print('ℹ️ No active delivery');
+      }
+    }, onError: (error) {
+      print('❌ Error listening to active orders: $error');
+    });
+  }
+
+  // �📍 Get user's current location
   Future<void> _getCurrentLocation() async {
     try {
       // Check if location services are enabled
@@ -198,7 +303,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
         }
       },
       child: Scaffold(
-      drawer: _buildDrawer(),
       body: Stack(
         children: [
           CustomScrollView(
@@ -223,28 +327,36 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
                 child: _buildTiffinServiceCard(),
               ),
               
-              // Hot Deals Section
+              // 👨‍🍳 COOK SECTIONS (Grouped by Cook like Swiggy/Zomato)
               SliverToBoxAdapter(
-                child: _buildHotDealsSection(filteredDishes),
-              ),
-              
-              // Most Bought Section
-              SliverToBoxAdapter(
-                child: _buildMostBoughtSection(filteredDishes),
+                child: _buildCookSections(),
               ),
               
               SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ),
           
-          // Active Delivery Banner
+          // Active Delivery Banner (dynamic position based on cart)
           if (_hasActiveDelivery && _activeOrder != null)
-            Positioned(
-              top: 40,
-              left: 16,
-              right: 16,
-              child: _buildActiveDeliveryBanner(),
+            Consumer<OrdersProvider>(
+              builder: (context, ordersProvider, child) {
+                final hasCartItems = ordersProvider.cartItemCount > 0;
+                return Positioned(
+                  bottom: hasCartItems ? 80 : 10, // Move up if cart visible, down if cart empty
+                  left: 0,
+                  right: 0,
+                  child: ActiveDeliveryBar(activeOrder: _activeOrder),
+                );
+              },
             ),
+          
+          // Swiggy-Style Floating Cart Summary Bar
+          Positioned(
+            bottom: 10, // Right above bottom navigation
+            left: 0,
+            right: 0,
+            child: CartSummaryBar(),
+          ),
         ],
       ),
       bottomNavigationBar: Container(
@@ -419,13 +531,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
           PageView.builder(
             controller: _pageController,
             onPageChanged: (index) {
-              if (index < banners.length) {
-                setState(() => _currentPage = index);
-              }
+              setState(() => _currentPage = index);
+              // Restart auto-scroll timer after manual page change
+              _autoScrollTimer?.cancel();
+              _startAutoScroll();
             },
-            itemCount: banners.length,
+            itemCount: 20000, // Very large number for infinite scrolling
             itemBuilder: (context, index) {
-              return _buildBannerPage(banners[index]);
+              // Use modulo to cycle through banners: 0, 1, 2, 0, 1, 2...
+              final bannerIndex = index % banners.length;
+              return _buildBannerPage(banners[bannerIndex]);
             },
           ),
           
@@ -434,120 +549,92 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
             top: 44,
             left: 24,
             right: 24,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Stack(
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        icon: Icon(Icons.menu, size: 20),
-                        onPressed: () => Scaffold.of(context).openDrawer(),
-                        padding: EdgeInsets.zero,
-                      ),
-                    ),
-                    SizedBox(width: 8),
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Stack(
-                        children: [
-                          IconButton(
-                            icon: Icon(Icons.shopping_cart, size: 20),
-                            onPressed: () => Navigator.pushNamed(context, AppRouter.cart),
-                            padding: EdgeInsets.zero,
-                          ),
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Container(
-                              padding: EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Color(0xFFFC8019),
-                                shape: BoxShape.circle,
-                              ),
-                              constraints: BoxConstraints(minWidth: 18, minHeight: 18),
-                              child: Text(
-                                '5',
-                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                Column(
-                  children: [
-                    Text('Location', style: TextStyle(color: Colors.white70, fontSize: 12)),
                     Row(
                       children: [
-                        Icon(Icons.location_on, color: Color(0xFFFC8019), size: 14),
-                        _isLoadingLocation
-                            ? SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : Text(_currentLocation, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Stack(
-                        children: [
-                          IconButton(
-                            icon: Icon(Icons.notifications, size: 20),
-                            onPressed: () {
-                              Navigator.pushNamed(context, '/notifications');
-                            },
-                            padding: EdgeInsets.zero,
-                          ),
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Container(
-                              padding: EdgeInsets.all(4),
+                        Consumer<OrdersProvider>(
+                          builder: (context, ordersProvider, _) {
+                            final cartCount = ordersProvider.cartItemCount;
+                            return Container(
+                              width: 40,
+                              height: 40,
                               decoration: BoxDecoration(
-                                color: Color(0xFFFC8019),
+                                color: Colors.white,
                                 shape: BoxShape.circle,
                               ),
-                              constraints: BoxConstraints(minWidth: 18, minHeight: 18),
-                              child: Text(
-                                '3',
-                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
+                              child: Stack(
+                                children: [
+                                  IconButton(
+                                    icon: Icon(Icons.shopping_cart, size: 20),
+                                    onPressed: () => Navigator.pushNamed(context, AppRouter.cart),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                  if (cartCount > 0)
+                                    Positioned(
+                                      right: 0,
+                                      top: 0,
+                                      child: Container(
+                                        padding: EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: Color(0xFFFC8019),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        constraints: BoxConstraints(minWidth: 18, minHeight: 18),
+                                        child: Text(
+                                          '$cartCount',
+                                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
-                            ),
+                            );
+                          },
+                        ),
+                        SizedBox(width: 8),
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
                           ),
-                        ],
-                      ),
+                          child: Stack(
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.notifications, size: 20),
+                                onPressed: () {
+                                  Navigator.pushNamed(context, '/notifications');
+                                },
+                                padding: EdgeInsets.zero,
+                              ),
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: Container(
+                                  padding: EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFFFC8019),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: BoxConstraints(minWidth: 18, minHeight: 18),
+                                  child: Text(
+                                    '3',
+                                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(width: 8),
                     Container(
                       width: 40,
                       height: 40,
@@ -563,6 +650,33 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
                     ),
                   ],
                 ),
+                // Location centered absolutely
+                Positioned.fill(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Location', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.location_on, color: Color(0xFFFC8019), size: 14),
+                            _isLoadingLocation
+                                ? SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : Text(_currentLocation, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -576,15 +690,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(
                 banners.length,
-                (index) => Container(
-                  margin: EdgeInsets.symmetric(horizontal: 2),
-                  width: _currentPage == index ? 16 : 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: _currentPage == index ? Color(0xFFFC8019) : Colors.white,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+                (index) {
+                  // Use modulo to show correct indicator for infinite scroll
+                  final currentIndicator = _currentPage % banners.length;
+                  return Container(
+                    margin: EdgeInsets.symmetric(horizontal: 2),
+                    width: currentIndicator == index ? 16 : 4,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: currentIndicator == index ? Color(0xFFFC8019) : Colors.white,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -699,10 +817,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
               onPressed: () {
                 FilterPopup.show(
                   context,
+                  initialSortBy: _sortBy,
+                  initialCategories: _selectedFilterCategories,
+                  initialMaxPrice: _maxPrice,
                   onApplyFilter: (filters) {
-                    // Handle filter results
-                    print('Applied filters: $filters');
-                    // TODO: Implement filter logic
+                    setState(() {
+                      _sortBy = filters['sortBy'] ?? 'recommended';
+                      _selectedFilterCategories = List<String>.from(filters['categories'] ?? []);
+                      _maxPrice = filters['maxPrice'] ?? 1000.0;
+                    });
+                    print('Applied filters: $_sortBy, $_selectedFilterCategories, $_maxPrice');
                   },
                 );
               },
@@ -717,11 +841,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
 
   Widget _buildCategoryChips() {
     final categories = [
+      {'name': 'Breakfast', 'icon': Icons.free_breakfast},
+      {'name': 'Lunch', 'icon': Icons.lunch_dining},
+      {'name': 'Dinner', 'icon': Icons.dinner_dining},
       {'name': 'Veg Thali', 'icon': Icons.set_meal_outlined},
-      {'name': 'Non-Veg', 'icon': Icons.dinner_dining},
-      {'name': 'Beverages', 'icon': Icons.local_drink_outlined},
+      {'name': 'Non-Veg', 'icon': Icons.restaurant_menu},
       {'name': 'Roti & Rice', 'icon': Icons.fastfood},
-      {'name': 'Meat', 'icon': Icons.food_bank},
     ];
 
     return Container(
@@ -732,10 +857,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
         itemCount: categories.length,
         itemBuilder: (context, index) {
           final category = categories[index];
-          final isSelected = _selectedCategory == category['name'];
+          final categoryName = category['name'] as String;
+          final isSelected = _selectedFilterCategories.contains(categoryName.toLowerCase());
           
           return GestureDetector(
-            onTap: () => setState(() => _selectedCategory = category['name'] as String),
+            onTap: () {
+              setState(() {
+                final categoryId = categoryName.toLowerCase();
+                if (isSelected) {
+                  _selectedFilterCategories.remove(categoryId);
+                } else {
+                  _selectedFilterCategories.add(categoryId);
+                }
+              });
+            },
             child: Container(
               margin: EdgeInsets.only(right: 12),
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -779,171 +914,137 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
           child: GestureDetector(
             onTap: () => Navigator.pushNamed(context, AppRouter.tiffinOrder),
             child: Container(
+              height: 120,
               margin: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF27AE60),
-                    Color(0xFF2ECC71),
-                    Color(0xFF3FDE81),
-                  ],
-                  stops: [0.0, 0.5, 1.0],
-                ),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Color(0xFF27AE60).withOpacity(0.4),
+                    color: Colors.black.withOpacity(0.1),
                     blurRadius: 20,
                     spreadRadius: 2,
                     offset: Offset(0, 8),
                   ),
-                  BoxShadow(
-                    color: Colors.white.withOpacity(0.1),
-                    blurRadius: 10,
-                    spreadRadius: -5,
-                    offset: Offset(0, -2),
-                  ),
                 ],
               ),
-              child: Stack(
-                children: [
-                  // Animated background pattern
-                  Positioned.fill(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: CustomPaint(
-                        painter: _TiffinPatternPainter(),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Stack(
+                  children: [
+                    // Green background for the animation
+                    Positioned.fill(
+                      child: Container(
+                        color: Color(0xFFE8F5E9), // Light green background
                       ),
                     ),
-                  ),
-                  
-                  // Main content
-                  Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Row(
-                      children: [
-                        // Animated icon container
-                        TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: Duration(milliseconds: 1200),
-                          curve: Curves.elasticOut,
-                          builder: (context, iconValue, child) {
-                            return Transform.rotate(
-                              angle: (1 - iconValue) * 0.5,
-                              child: Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.1),
-                                      blurRadius: 8,
-                                      offset: Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  Icons.lunch_dining_rounded,
-                                  color: Color(0xFF27AE60),
-                                  size: 32,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        SizedBox(width: 16),
-                        
-                        // Text content
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    'Home',
-                                    style: GoogleFonts.poppins(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                  SizedBox(width: 6),
-                                  Icon(Icons.arrow_forward, color: Colors.white, size: 16),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'Office Tiffin',
-                                    style: GoogleFonts.poppins(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 6),
-                              Container(
-                                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.25),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                    
+                    // Lottie animation in the middle
+                    Positioned(
+                      right: 60,
+                      top: 0,
+                      bottom: 0,
+                      width: 120,
+                      child: Lottie.asset(
+                        'assets/lottie/tiffinbotton.json',
+                        fit: BoxFit.contain,
+                        repeat: true,
+                      ),
+                    ),
+                    
+                    // Content
+                    Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Row(
+                        children: [
+                          // Text content
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
-                                    Icon(Icons.schedule, color: Colors.white, size: 14),
-                                    SizedBox(width: 4),
                                     Text(
-                                      'Daily delivery service',
+                                      'Home',
                                       style: GoogleFonts.poppins(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
+                                        color: Colors.black,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                    SizedBox(width: 6),
+                                    Icon(Icons.arrow_forward, color: Colors.black, size: 18),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Office Tiffin',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.black,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
+                                SizedBox(height: 6),
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFF27AE60).withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.schedule, color: Color(0xFF27AE60), size: 14),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Daily delivery service',
+                                        style: GoogleFonts.poppins(
+                                          color: Color(0xFF27AE60),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
                         
-                        // Animated arrow
-                        TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: Duration(milliseconds: 1500),
-                          curve: Curves.easeInOut,
-                          builder: (context, arrowValue, child) {
-                            return Transform.translate(
-                              offset: Offset(
-                                5 * (0.5 - (arrowValue - 0.5).abs()),
-                                0,
-                              ),
-                              child: Container(
-                                padding: EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  shape: BoxShape.circle,
+                          // Animated arrow
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            duration: Duration(milliseconds: 1500),
+                            curve: Curves.easeInOut,
+                            builder: (context, arrowValue, child) {
+                              return Transform.translate(
+                                offset: Offset(
+                                  5 * (0.5 - (arrowValue - 0.5).abs()),
+                                  0,
                                 ),
-                                child: Icon(
-                                  Icons.arrow_forward_ios,
-                                  color: Colors.white,
-                                  size: 18,
+                                child: Container(
+                                  padding: EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFF27AE60),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.arrow_forward_ios,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -951,6 +1052,337 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
       },
     );
   }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 👨‍🍳 COOK SECTIONS (Grouped by Cook like Swiggy/Zomato)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  Widget _buildCookSections() {
+    return Consumer<DishesProvider>(
+      builder: (context, dishesProvider, _) {
+        if (dishesProvider.isCookSectionsLoading) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(40),
+              child: CircularProgressIndicator(
+                color: Color(0xFFFC8019),
+              ),
+            ),
+          );
+        }
+
+        // Filter cook sections by search query, categories, price, and sort
+        final cookSections = dishesProvider.filterCookSections(
+          _searchQuery,
+          categories: _selectedFilterCategories.isEmpty ? null : _selectedFilterCategories,
+          maxPrice: _maxPrice,
+          sortBy: _sortBy,
+        );
+
+        if (cookSections.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.all(40),
+              child: Column(
+                children: [
+                  Icon(Icons.restaurant_menu, size: 80, color: Colors.grey[400]),
+                  SizedBox(height: 16),
+                  Text(
+                    'No food found',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Try adjusting your filters or search terms',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            // Section Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                children: [
+                  Text(
+                    "👨‍🍳 Our Verified Cooks",
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Color(0xFFFC8019).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${cookSections.length} cooks',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFFC8019),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Cook Sections List
+            ...cookSections.map((cookSection) {
+              return CookSectionCard(
+                cookSection: cookSection,
+                onDishTap: (dish) => _navigateToDishDetail(dish),
+                dishCardBuilder: (dish) => _buildCompactDishCard(dish),
+              );
+            }).toList(),
+          ],
+        );
+      },
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // COMPACT DISH CARD (For Horizontal Scroll within Cook Sections)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  Widget _buildCompactDishCard(DishModel dish) {
+    return Container(
+      width: 200,
+      height: 250,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Stack(
+        children: [
+          // Background Image
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: CachedNetworkImage(
+              imageUrl: dish.imageUrl,
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(
+                color: Colors.grey[200],
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+              errorWidget: (context, url, error) => Container(
+                color: Colors.grey[300],
+                child: const Icon(Icons.fastfood, size: 40, color: Colors.grey),
+              ),
+            ),
+          ),
+          
+          // Top & Bottom Content
+          Column(
+            mainAxisSize: MainAxisSize.max,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Top: Rating Badge with Blur
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0x7F191D31),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(
+                              sigmaX: 5,
+                              sigmaY: 2,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                children: [
+                                  const Icon(
+                                    Icons.star,
+                                    color: Colors.amber,
+                                    size: 12,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    dish.rating.toStringAsFixed(1),
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Bottom: Dish Info with Blur
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0x7F191D31),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(
+                              sigmaX: 5,
+                              sigmaY: 2,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(10, 10, 0, 10),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.max,
+                                      children: [
+                                        // Dish Name
+                                        Row(
+                                          mainAxisSize: MainAxisSize.max,
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                dish.title,
+                                                style: GoogleFonts.poppins(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        // Price
+                                        Row(
+                                          mainAxisSize: MainAxisSize.max,
+                                          children: [
+                                            RichText(
+                                              text: TextSpan(
+                                                children: [
+                                                  TextSpan(
+                                                    text: '₹ ',
+                                                    style: GoogleFonts.poppins(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w500,
+                                                      color: const Color(0xFFFC8019),
+                                                    ),
+                                                  ),
+                                                  TextSpan(
+                                                    text: dish.price.toStringAsFixed(0),
+                                                    style: GoogleFonts.poppins(
+                                                      fontSize: 18,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Heart Button
+                                  Row(
+                                    mainAxisSize: MainAxisSize.max,
+                                    children: [
+                                      Consumer<FavoritesProvider>(
+                                        builder: (context, favProvider, _) {
+                                          final isFavorite = favProvider.favoriteDishes.contains(dish.dishId);
+                                          return GestureDetector(
+                                            onTap: () async {
+                                              await favProvider.toggleDishFavorite(dish.dishId);
+                                            },
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(8),
+                                              child: Icon(
+                                                isFavorite ? Icons.favorite : Icons.favorite_border,
+                                                color: isFavorite ? Colors.red : Colors.white,
+                                                size: 20,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // NAVIGATION HELPER
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  void _navigateToDishDetail(DishModel dish) {
+    Navigator.of(context).pushNamed(
+      AppRouter.dishDetail,
+      arguments: {'dishId': dish.dishId},
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // OLD METHODS (Kept for reference, not used)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Widget _buildHotDealsSection(List<DishModel> dishes) {
     final hotDeals = dishes.take(3).toList();
@@ -1035,6 +1467,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
       },
       child: Container(
         width: 200,
+        height: 250,
         margin: EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1042,119 +1475,196 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
         ),
         child: Stack(
           children: [
+            // Background Image
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: CachedNetworkImage(
                 imageUrl: dish.imageUrl,
-                width: 200,
-                height: 250,
+                width: double.infinity,
+                height: double.infinity,
                 fit: BoxFit.cover,
-                placeholder: (context, url) => Container(color: Colors.grey[300]),
+                placeholder: (context, url) => Container(
+                  color: Colors.grey[200],
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
                 errorWidget: (context, url, error) => Container(
                   color: Colors.grey[300],
-                  child: Icon(Icons.restaurant, size: 50, color: Colors.grey),
+                  child: const Icon(Icons.fastfood, size: 40, color: Colors.grey),
                 ),
               ),
             ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withOpacity(0.7),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            Positioned(
-              top: 14,
-              left: 14,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.star, color: Colors.amber, size: 14),
-                    SizedBox(width: 4),
-                    Text(
-                      dish.rating?.toStringAsFixed(1) ?? '4.5',
-                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 8,
-              left: 8,
-              right: 8,
-              child: Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            dish.title,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+            
+            // Top & Bottom Content
+            Column(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top: Rating Badge with Blur
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0x7F191D31),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          SizedBox(height: 4),
-                          RichText(
-                            text: TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: '\$ ',
-                                  style: TextStyle(color: Color(0xFFFC8019), fontSize: 12),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(
+                                sigmaX: 5,
+                                sigmaY: 2,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.max,
+                                  children: [
+                                    const Icon(
+                                      Icons.star,
+                                      color: Colors.amber,
+                                      size: 12,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      dish.rating.toStringAsFixed(1),
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                TextSpan(
-                                  text: dish.price.toStringAsFixed(2),
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        icon: Icon(Icons.favorite_border, color: Colors.white, size: 18),
-                        onPressed: () {},
-                        padding: EdgeInsets.all(8),
-                        constraints: BoxConstraints(),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+                
+                // Bottom: Dish Info with Blur
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0x7F191D31),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(
+                                sigmaX: 5,
+                                sigmaY: 2,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(10, 10, 0, 10),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.max,
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.max,
+                                        children: [
+                                          // Dish Name
+                                          Row(
+                                            mainAxisSize: MainAxisSize.max,
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  dish.title,
+                                                  style: GoogleFonts.poppins(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.white,
+                                                  ),
+                                                  maxLines: 2,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          // Price
+                                          Row(
+                                            mainAxisSize: MainAxisSize.max,
+                                            children: [
+                                              RichText(
+                                                text: TextSpan(
+                                                  children: [
+                                                    TextSpan(
+                                                      text: '₹ ',
+                                                      style: GoogleFonts.poppins(
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.w500,
+                                                        color: const Color(0xFFFC8019),
+                                                      ),
+                                                    ),
+                                                    TextSpan(
+                                                      text: dish.price.toStringAsFixed(0),
+                                                      style: GoogleFonts.poppins(
+                                                        fontSize: 18,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    // Heart Button
+                                    Row(
+                                      mainAxisSize: MainAxisSize.max,
+                                      children: [
+                                        Consumer<FavoritesProvider>(
+                                          builder: (context, favProvider, _) {
+                                            final isFavorite = favProvider.favoriteDishes.contains(dish.dishId);
+                                            return GestureDetector(
+                                              onTap: () async {
+                                                await favProvider.toggleDishFavorite(dish.dishId);
+                                              },
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(8),
+                                                child: Icon(
+                                                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                                                  color: isFavorite ? Colors.red : Colors.white,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1162,67 +1672,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
     );
   }
 
-  Widget _buildActiveDeliveryBanner() {
-    return GestureDetector(
-      onTap: () {
-        Navigator.pushNamed(
-          context,
-          AppRouter.orderTrackingLive,
-          arguments: {'orderId': _activeOrder!.orderId},
-        );
-      },
-      child: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.green[600]!, Colors.green[400]!],
-          ),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.green.withOpacity(0.3),
-              blurRadius: 8,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(Icons.delivery_dining, color: Colors.white, size: 32),
-            ),
-            SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '🚀 Delivery in Progress',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    _activeOrder!.status.name.replaceAll('_', ' '),
-                    style: TextStyle(color: Colors.white70, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // Custom painter for tiffin card background pattern

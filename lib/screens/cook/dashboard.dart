@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import '../../providers/auth_provider.dart';
 import '../../providers/orders_provider.dart';
 import '../../models/order_model.dart';
+import '../../services/fcm_service.dart';
 import '../../app_router.dart';
+import '../../test_cook_notification.dart';
 
 class CookDashboardScreen extends StatefulWidget {
   const CookDashboardScreen({super.key});
@@ -15,6 +19,8 @@ class CookDashboardScreen extends StatefulWidget {
 }
 
 class _CookDashboardScreenState extends State<CookDashboardScreen> {
+  StreamSubscription<QuerySnapshot>? _notificationSubscription;
+  
   @override
   void initState() {
     super.initState();
@@ -22,7 +28,178 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       Provider.of<OrdersProvider>(context, listen: false)
           .loadCookOrders(authProvider.currentUser!.uid);
+      
+      // 🔔 Save FCM token for push notifications
+      FCMService().saveFCMToken();
+      
+      // 🔔 Listen for new order notifications
+      _listenForNewOrders(authProvider.currentUser!.uid);
     });
+  }
+
+  @override
+  void dispose() {
+    _notificationSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// 🔔 Listen for new order notifications and show popup
+  void _listenForNewOrders(String cookId) {
+    print('🔔 [Cook] Starting notification listener for cook: $cookId');
+    
+    _notificationSubscription = FirebaseFirestore.instance
+        .collection('notifications')
+        .where('recipientId', isEqualTo: cookId)
+        .where('type', isEqualTo: 'NEW_ORDER')
+        .where('read', isEqualTo: false)
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.docs.isEmpty) return;
+      
+      for (var doc in snapshot.docChanges) {
+        if (doc.type == DocumentChangeType.added) {
+          final data = doc.doc.data() as Map<String, dynamic>;
+          print('🔔 [Cook] New order notification received!');
+          print('   Order ID: ${data['orderId']}');
+          print('   Title: ${data['title']}');
+          print('   Body: ${data['body']}');
+          
+          // Show popup dialog
+          _showNewOrderDialog(
+            orderId: data['orderId'],
+            customerName: data['data']['customerName'],
+            dishNames: data['data']['dishNames'],
+            totalAmount: data['data']['totalAmount'],
+            notificationId: doc.doc.id,
+          );
+        }
+      }
+    });
+  }
+
+  /// 🎉 Show new order dialog popup
+  void _showNewOrderDialog({
+    required String orderId,
+    required String customerName,
+    required String dishNames,
+    required double totalAmount,
+    required String notificationId,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.restaurant_menu, color: Colors.green, size: 30),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '🔔 New Order!',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  Text(
+                    'Order #${orderId.substring(0, 8)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow(Icons.person, 'Customer', customerName),
+            SizedBox(height: 12),
+            _buildInfoRow(Icons.restaurant, 'Items', dishNames),
+            SizedBox(height: 12),
+            _buildInfoRow(Icons.currency_rupee, 'Amount', '₹${totalAmount.toStringAsFixed(0)}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              // Mark notification as read
+              FirebaseFirestore.instance
+                  .collection('notifications')
+                  .doc(notificationId)
+                  .update({'read': true});
+              Navigator.pop(context);
+            },
+            child: Text('Dismiss', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // Mark notification as read
+              FirebaseFirestore.instance
+                  .collection('notifications')
+                  .doc(notificationId)
+                  .update({'read': true});
+              Navigator.pop(context);
+              // Refresh orders list
+              final authProvider = Provider.of<AuthProvider>(context, listen: false);
+              Provider.of<OrdersProvider>(context, listen: false)
+                  .loadCookOrders(authProvider.currentUser!.uid);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: Text('View Order', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: Colors.green),
+        SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -87,6 +264,35 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
         appBar: AppBar(
           title: const Text('Cook Dashboard'),
         actions: [
+          // 🧪 TEST Notification Button (Yellow)
+          IconButton(
+            icon: const Icon(Icons.science, color: Colors.yellow),
+            tooltip: 'Test Notification',
+            onPressed: () async {
+              print('🧪 [[COOK TEST]] Button clicked!');
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('🧪 Creating test notification...')),
+              );
+              
+              // Test with known rider ID
+              const testRiderId = 'pCPNkvC4hqTNZqMuLlqjue9NVAF3';
+              const testOrderId = 'TEST_COOK_ORDER_001';
+              
+              await createTestNotificationFromCook(
+                riderId: testRiderId,
+                orderId: testOrderId,
+              );
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Test notification sent! Check rider app.'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: () => Navigator.pushNamed(context, AppRouter.profile),
@@ -201,12 +407,30 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
                                 ],
                               )
                             else if (order.status == OrderStatus.ACCEPTED)
+                              // Show "Start Preparing" button for ACCEPTED orders
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton.icon(
-                                  onPressed: () => _markFoodReady(order.orderId),
-                                  icon: const Icon(Icons.restaurant_menu),
-                                  label: const Text('Food Ready'),
+                                  onPressed: () => _startPreparing(order.orderId),
+                                  icon: const Icon(Icons.restaurant),
+                                  label: const Text('👨‍🍳 Start Preparing'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
+                              )
+                            else if (order.status == OrderStatus.PREPARING)
+                              // Show "Food Ready" button for PREPARING orders
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    print('🔴 [Cook] BUTTON CLICKED! Calling _markFoodReady for ${order.orderId}');
+                                    _markFoodReady(order.orderId);
+                                  },
+                                  icon: const Icon(Icons.check_circle),
+                                  label: const Text('✅ Food Ready'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green,
                                     foregroundColor: Colors.white,
@@ -311,8 +535,28 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? 'Order accepted! Start preparing food.' : 'Failed to accept order'),
+          content: Text(success ? '✅ Order accepted! Click "Start Preparing" when ready.' : 'Failed to accept order'),
           backgroundColor: success ? Colors.green : Colors.red,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  // 👨‍🍳 START PREPARING FOOD
+  Future<void> _startPreparing(String orderId) async {
+    final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
+    final success = await ordersProvider.updateOrderStatus(
+      orderId,
+      OrderStatus.PREPARING,
+    );
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? '👨‍🍳 Started preparing! Mark as ready when done.' : 'Failed to update status'),
+          backgroundColor: success ? Colors.blue : Colors.red,
+          duration: Duration(seconds: 2),
         ),
       );
     }
@@ -359,12 +603,14 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
 
   // 🍽️ MARK FOOD READY (and auto-assign rider)
   Future<void> _markFoodReady(String orderId) async {
+    print('🟢 [Cook] _markFoodReady() FUNCTION CALLED for order: $orderId');
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Food Ready?'),
         content: const Text(
-          'Mark food as ready for pickup. A nearby rider will be automatically assigned.',
+          'Mark food as ready for pickup. Nearby riders will see this order and can accept it.',
         ),
         actions: [
           TextButton(
@@ -383,6 +629,8 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
       ),
     );
 
+    print('🟡 [Cook] Dialog result: ${confirmed == true ? "CONFIRMED" : "CANCELLED/DISMISSED"}');
+
     if (confirmed == true && mounted) {
       // Show loading
       showDialog(
@@ -397,7 +645,7 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 16),
-                  Text('Finding nearby rider...'),
+                  Text('Marking food as ready...'),
                 ],
               ),
             ),
@@ -405,19 +653,63 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
         ),
       );
 
+      print('🔵 [Cook] _markFoodReady() called for order: $orderId');
+      
       final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
       
-      // TODO: Implement auto-assignment logic
-      // For now, just update status to ASSIGNED
-      // In production, this should call a Cloud Function that:
-      // 1. Finds available riders nearby
-      // 2. Assigns the closest one
-      // 3. Sends notification to rider
+      // ✅ [NORMAL FOOD WORKFLOW FIX - Issue #2]
+      // Mark order as READY for pickup
+      // Then notify nearby riders (correct workflow)
       
+      print('📝 [Cook] Updating order status to READY...');
       final success = await ordersProvider.updateOrderStatus(
         orderId,
-        OrderStatus.RIDER_ASSIGNED,
+        OrderStatus.READY,
       );
+      
+      print('📊 [Cook] Update status result: success=$success');
+
+      if (success) {
+        // 🔔 NOW notify nearby riders (correct timing!)
+        try {
+          print('🔔 [Cook] Food marked READY. Notifying nearby riders...');
+          print('🔍 [Cook] Fetching order document: $orderId');
+          
+          // Fetch order details to get pickup location
+          final orderDoc = await FirebaseFirestore.instance
+              .collection('orders')
+              .doc(orderId)
+              .get();
+          
+          print('📄 [Cook] Order document exists: ${orderDoc.exists}');
+          
+          if (orderDoc.exists) {
+            final orderData = orderDoc.data()!;
+            final pickupLocation = orderData['pickupLocation'] as GeoPoint;
+            
+            print('📍 [Cook] Pickup location: ${pickupLocation.latitude}, ${pickupLocation.longitude}');
+            print('🚀 [Cook] Calling FCMService().notifyNearbyRiders()...');
+            
+            // Send FCM notifications to nearby riders
+            await FCMService().notifyNearbyRiders(
+              orderId: orderId,
+              pickupLat: pickupLocation.latitude,
+              pickupLng: pickupLocation.longitude,
+              radiusKm: 5.0,
+            );
+            
+            print('✅ [Cook] Riders notified successfully');
+          } else {
+            print('❌ [Cook] Order document not found!');
+          }
+        } catch (e, stackTrace) {
+          print('⚠️ [Cook] FCM notification failed: $e');
+          print('📚 [Cook] Stack trace: $stackTrace');
+          // Continue anyway - riders can still see order in dashboard
+        }
+      } else {
+        print('❌ [Cook] Failed to update order status to READY');
+      }
 
       if (mounted) {
         Navigator.pop(context); // Close loading
@@ -426,7 +718,7 @@ class _CookDashboardScreenState extends State<CookDashboardScreen> {
           SnackBar(
             content: Text(
               success 
-                  ? 'Food marked ready! Rider will be assigned shortly.' 
+                  ? '✅ Food marked ready! Nearby riders notified.' 
                   : 'Failed to update status',
             ),
             backgroundColor: success ? Colors.green : Colors.red,

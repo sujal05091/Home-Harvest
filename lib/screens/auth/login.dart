@@ -41,6 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
     bool success = await authProvider.signIn(
       email: _emailController.text.trim(),
       password: _passwordController.text,
+      role: widget.role,
     );
 
     setState(() => _isLoading = false);
@@ -62,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Navigator.pushReplacementNamed(context, AppRouter.customerHome);
           break;
         case 'cook':
-          Navigator.pushReplacementNamed(context, AppRouter.cookDashboard);
+          Navigator.pushReplacementNamed(context, AppRouter.cookDashboardModern);
           break;
         case 'rider':
           Navigator.pushReplacementNamed(context, AppRouter.riderHome);
@@ -76,6 +77,109 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _loginWithGoogle() async {
+    setState(() => _isLoading = true);
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // Use the role from widget parameter or default to 'customer'
+    final role = widget.role ?? 'customer';
+    
+    bool success = await authProvider.signInWithGoogle(role: role);
+
+    setState(() => _isLoading = false);
+
+    if (success && mounted) {
+      // 🔔 Save FCM token for riders immediately after login
+      if (authProvider.currentUser?.role == 'rider') {
+        try {
+          await FCMService().saveFCMToken();
+          print('✅ FCM token saved for rider after Google login');
+        } catch (e) {
+          print('⚠️ Failed to save FCM token: $e');
+        }
+      }
+      
+      // Navigate based on role
+      switch (authProvider.currentUser?.role) {
+        case 'customer':
+          Navigator.pushReplacementNamed(context, AppRouter.customerHome);
+          break;
+        case 'cook':
+          Navigator.pushReplacementNamed(context, AppRouter.cookDashboardModern);
+          break;
+        case 'rider':
+          Navigator.pushReplacementNamed(context, AppRouter.riderHome);
+          break;
+      }
+    } else if (mounted && authProvider.errorMessage != null) {
+      // Show detailed error dialog for configuration issues
+      if (authProvider.errorMessage!.contains('not configured') || 
+          authProvider.errorMessage!.contains('ApiException: 10')) {
+        _showGoogleSignInErrorDialog();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authProvider.errorMessage ?? 'Google Sign In failed'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showGoogleSignInErrorDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Google Sign-In Setup Required'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Google Sign-In needs to be configured in Firebase Console.',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 12),
+            Text('Quick Steps:', style: TextStyle(fontWeight: FontWeight.w600)),
+            SizedBox(height: 8),
+            Text('1. Run: cd android && ./gradlew signingReport'),
+            Text('2. Copy SHA-1 fingerprint'),
+            Text('3. Add to Firebase Console'),
+            Text('4. Download new google-services.json'),
+            Text('5. Restart app'),
+            SizedBox(height: 12),
+            Text(
+              'For now, please use Email/Password login instead.',
+              style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Got It'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Could open GOOGLE_SIGNIN_SETUP.md or a help link
+            },
+            child: Text('View Full Guide', style: TextStyle(color: AppTheme.primaryOrange)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showForgotPasswordModal() {
@@ -340,14 +444,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 SizedBox(
                   height: 56,
                   child: OutlinedButton.icon(
-                    onPressed: _isLoading
-                        ? null
-                        : () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('Google Sign In coming soon!')),
-                            );
-                          },
+                    onPressed: _isLoading ? null : _loginWithGoogle,
                     icon: const FaIcon(
                       FontAwesomeIcons.google,
                       size: 20,

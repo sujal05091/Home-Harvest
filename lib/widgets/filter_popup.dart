@@ -55,8 +55,11 @@ class _FilterPopupState extends State<FilterPopup> {
   ];
 
   final List<Map<String, dynamic>> _categories = [
+    {'id': 'breakfast', 'label': 'Breakfast', 'icon': Icons.free_breakfast},
+    {'id': 'lunch', 'label': 'Lunch', 'icon': Icons.lunch_dining},
+    {'id': 'dinner', 'label': 'Dinner', 'icon': Icons.dinner_dining},
     {'id': 'home-cooked', 'label': 'Home-Cooked', 'icon': Icons.home},
-    {'id': 'tiffin', 'label': 'Tiffin Service', 'icon': Icons.lunch_dining},
+    {'id': 'tiffin', 'label': 'Tiffin Service', 'icon': Icons.food_bank},
     {'id': 'north-indian', 'label': 'North Indian', 'icon': Icons.restaurant},
     {'id': 'south-indian', 'label': 'South Indian', 'icon': Icons.ramen_dining},
     {'id': 'desserts', 'label': 'Desserts', 'icon': Icons.cake},

@@ -123,11 +123,11 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
       print('ℹ️ [Route] Already loaded for status: $status');
       return;  // Prevent duplicate loads for same status
     }
-    if (status.index < OrderStatus.RIDER_ACCEPTED.index && _routePoints.isNotEmpty && !_isRiderAccepted) {
+    if (status.index < OrderStatus.RIDER_ASSIGNED.index && _routePoints.isNotEmpty && !_isRiderAccepted) {
       print('ℹ️ [Route] Pre-rider route already loaded');
       return;
     }
-    if (status.index >= OrderStatus.RIDER_ACCEPTED.index && _isRiderAccepted && _routePoints.isNotEmpty) {
+    if (status.index >= OrderStatus.RIDER_ASSIGNED.index && _isRiderAccepted && _routePoints.isNotEmpty) {
       print('ℹ️ [Route] Post-rider route already loaded');
       return;
     }
@@ -141,7 +141,7 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
     
     try {
       // PHASE A: Before rider accepts - show curved dotted line
-      if (status.index < OrderStatus.RIDER_ACCEPTED.index) {
+      if (status.index < OrderStatus.RIDER_ASSIGNED.index) {
         if (_routePoints.isEmpty) {
           print('🏁 [Route] Phase A: Generating curved route pickup→drop');
           final curvedRoute = RouteService.generateCurvedRoute(
@@ -161,7 +161,7 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
           _routeAnimationController.forward(from: 0);
         }
       }
-      // PHASE B: After rider accepts - fetch road-based route
+      // PHASE B: After rider accepts (RIDER_ASSIGNED or later) - fetch road-based route
       else {
         print('🚴 [Route] Phase B: Fetching road route');
         print('🚴 [Route] Rider: $_riderPosition');
@@ -225,7 +225,7 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
   Future<void> _recalculateRouteWithRider(OrderStatus status) async {
     if (_riderPosition == null || _pickupLocation == null || _dropLocation == null) return;
     if (_isLoadingRoute) return;
-    if (status.index < OrderStatus.RIDER_ACCEPTED.index) return;
+    if (status.index < OrderStatus.RIDER_ASSIGNED.index) return;
     
     setState(() => _isLoadingRoute = true);
     
@@ -385,6 +385,24 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
 
           final order = OrderModel.fromMap(orderData, widget.orderId);
           
+          // 🏠 REDIRECT TO HOME AFTER DELIVERY COMPLETE
+          if (order.status == OrderStatus.DELIVERED) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              
+              // Show success and navigate home after 2 seconds
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/customer/home',
+                    (route) => false,
+                  );
+                }
+              });
+            });
+          }
+          
           // Update locations (scheduled after frame to avoid issues)
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
@@ -435,12 +453,12 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
                   final prevLoc = prevData['currentLocation'] as GeoPoint?;
                   final nextLoc = nextData['currentLocation'] as GeoPoint?;
                   if (prevLoc == null || nextLoc == null) return true;
-                  // Consider locations same if within 5 meters
+                  // 🧪 TESTING: Consider locations different if > 1 meter (change to 0.005 for production)
                   final distance = _calculateDistance(
                     prevLoc.latitude, prevLoc.longitude,
                     nextLoc.latitude, nextLoc.longitude,
                   );
-                  return distance > 0.005; // ~5 meters
+                  return distance > 0.001; // ~1 meter (for testing)
                 }),
             builder: (context, deliverySnapshot) {
               DeliveryModel? delivery;
@@ -509,9 +527,9 @@ class _PremiumTrackingScreenState extends State<PremiumTrackingScreen>
                           _previousRiderPosition!.latitude, _previousRiderPosition!.longitude,
                           newPosition.latitude, newPosition.longitude,
                         );
-                        // If rider moved more than 50 meters, recalculate route
-                        if (distance > 0.05) {
-                          print('🔄 [Tracking] Rider moved ${distance}km, recalculating route');
+                        // 🧪 TESTING: Recalculate if moved > 20 meters (change to 0.05 for production)
+                        if (distance > 0.02) {
+                          print('🔄 [Tracking] Rider moved ${(distance * 1000).toStringAsFixed(0)}m, recalculating route');
                           _recalculateRouteWithRider(order.status);
                         }
                       }

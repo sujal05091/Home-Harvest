@@ -37,6 +37,23 @@ class NotificationService {
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTap,
     );
+    
+    // 🚨 Create notification channel with FULL SCREEN INTENT support (Android)
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'delivery_requests', // id - MUST match the channel id used in notifications
+      'Delivery Requests', // name
+      description: 'New delivery request notifications',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+      showBadge: true,
+    );
+    
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+    
+    print('✅ Notification channel created with full-screen support');
 
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/orders_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dishes_provider.dart';
@@ -10,10 +11,12 @@ import '../../models/dish_model.dart';
 import '../../app_router.dart';
 import '../../services/delivery_charge_service.dart';
 import '../../services/pricing_service.dart';
+import '../../services/route_service.dart';
 import '../../services/fcm_service.dart';
 import '../../widgets/select_payment_method_modal.dart';
 import '../../widgets/order_success_modal.dart';
 import 'select_address.dart';
+import 'package:latlong2/latlong.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -431,7 +434,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   style: const TextStyle(fontSize: 14),
                   children: [
                     TextSpan(
-                      text: '\$ ',
+                      text: '₹ ',
                       style: TextStyle(
                         fontSize: 12,
                         color: const Color(0xFFFC8019),
@@ -471,7 +474,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   style: const TextStyle(fontSize: 14),
                   children: [
                     TextSpan(
-                      text: '\$ ',
+                      text: '₹ ',
                       style: TextStyle(
                         fontSize: 12,
                         color: const Color(0xFFFC8019),
@@ -521,7 +524,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   style: const TextStyle(fontSize: 14),
                   children: [
                     TextSpan(
-                      text: '\$ ',
+                      text: '₹ ',
                       style: TextStyle(
                         fontSize: 14,
                         color: const Color(0xFFFC8019),
@@ -621,30 +624,100 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         throw Exception('Failed to load details');
       }
 
-      // Calculate delivery distance and charge
-      final deliveryDetails = DeliveryChargeService.calculateDeliveryDetails(
-        dish.location, // Cook's location (pickup)
-        _selectedAddress!.location, // Customer's address (drop)
+      // ⚠️ CRITICAL VALIDATION: Check coordinates BEFORE calling OSRM
+      final pickupLat = dish.location.latitude;
+      final pickupLng = dish.location.longitude;
+      final dropLat = _selectedAddress!.location.latitude;
+      final dropLng = _selectedAddress!.location.longitude;
+      
+      print('📍 [Checkout] DEBUG - Pickup GeoPoint: $pickupLat, $pickupLng');
+      print('📍 [Checkout] DEBUG - Drop GeoPoint: $dropLat, $dropLng');
+      
+      // Validate coordinates are not null, zero, or out of range
+      if (pickupLat == 0 || pickupLng == 0 || dropLat == 0 || dropLng == 0) {
+        throw Exception('⚠️ Invalid coordinates detected! Pickup or Drop location has 0,0 coordinates');
+      }
+      
+      if (pickupLat < -90 || pickupLat > 90 || dropLat < -90 || dropLat > 90) {
+        throw Exception('⚠️ Invalid latitude! Must be between -90 and 90');
+      }
+      
+      if (pickupLng < -180 || pickupLng > 180 || dropLng < -180 || dropLng > 180) {
+        throw Exception('⚠️ Invalid longitude! Must be between -180 and 180');
+      }
+      
+      print('✅ [Checkout] Coordinates validated successfully');
+
+      // ✅ FIX: Calculate ACTUAL ROAD DISTANCE using OSRM (not straight line!)
+      
+      final pickupLocation = LatLng(
+        dish.location.latitude, 
+        dish.location.longitude,
+      );
+      final dropLocation = LatLng(
+        _selectedAddress!.location.latitude,
+        _selectedAddress!.location.longitude,
       );
       
-      final distance = deliveryDetails['distance']!;
+      print('🗺️ [Checkout] Fetching route from OSRM...');
+      print('   Pickup: ${pickupLocation.latitude}, ${pickupLocation.longitude}');
+      print('   Drop: ${dropLocation.latitude}, ${dropLocation.longitude}');
+      
+      // Fetch route info with real road distance from OSRM API
+      final routeInfo = await RouteService.getRouteInfo(
+        start: pickupLocation,
+        end: dropLocation,
+      );
+      
+      final distanceKm = routeInfo.distanceInKm; // Use actual road distance in KM
+      print('✅ [Checkout] OSRM Route Result: ${distanceKm.toStringAsFixed(2)} km (${routeInfo.distanceInMeters.toStringAsFixed(0)} meters)');
       
       // 💰 Calculate delivery pricing with rider earnings
       final pricingService = PricingService();
-      final pricing = await pricingService.calculateDeliveryCharge(distance);
+      final pricing = await pricingService.calculateDeliveryCharge(
+        distanceKm,
+        orderType: OrderType.NORMAL_FOOD,
+      );
+
+      // For NORMAL FOOD: Platform commission = 10% of food price
+      // Food price = cart total (before adding delivery charge)
+      final foodPrice = ordersProvider.cartTotal;
+      final platformCommissionFromFood = foodPrice * 0.10; // 10% of food price
 
       setState(() {
         _firstDish = dish;
-        _distance = distance;
+        _distance = distanceKm;
         _deliveryCharge = pricing['deliveryCharge'];
-        _riderEarning = pricing['riderEarning'];
-        _platformCommission = pricing['platformCommission'];
+        _riderEarning = pricing['riderEarning']; // 100% of delivery charge for Normal Food
+        _platformCommission = platformCommissionFromFood; // 10% of food price
         _isLoadingDetails = false;
       });
     } catch (e) {
+      print('❌ [Checkout] Error loading delivery details: $e');
+      
       setState(() {
         _isLoadingDetails = false;
       });
+      
+      // Show user-friendly error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.toString().contains('0,0 coordinates')
+                  ? '⚠️ Invalid dish location! Cook needs to update restaurant address.'
+                  : '❌ Error calculating delivery: ${e.toString()}',
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -728,6 +801,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     print('🔄 [Checkout] Loading state set to true');
 
     try {
+      // Save food total BEFORE any operations (in case cart state changes)
+      final foodTotal = ordersProvider.cartTotal;
+      final cartItemsList = List<OrderItem>.from(ordersProvider.cartItems);
+      
+      // Fetch cook's phone number from Firestore
+      String? cookPhone;
+      try {
+        final cookDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_firstDish!.cookId)
+            .get();
+        if (cookDoc.exists) {
+          cookPhone = cookDoc.data()?['phone'];
+          print('📞 [Checkout] Cook phone: $cookPhone');
+        }
+      } catch (e) {
+        print('⚠️ [Checkout] Failed to fetch cook phone: $e');
+      }
+      
       final order = OrderModel(
         orderId: '',
         customerId: authProvider.currentUser!.uid,
@@ -735,8 +827,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         customerPhone: authProvider.currentUser!.phone,
         cookId: _firstDish!.cookId,
         cookName: _firstDish!.cookName,
-        dishItems: ordersProvider.cartItems,
-        total: ordersProvider.cartTotal + _deliveryCharge!,
+        cookPhone: cookPhone,
+        dishItems: cartItemsList,
+        total: foodTotal + _deliveryCharge!,
         paymentMethod: _paymentMethod,
         status: OrderStatus.PLACED,
         pickupAddress: '${_firstDish!.cookName}\'s Kitchen',
@@ -759,20 +852,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       print('📦 [Checkout] Order created with ID: $orderId');
       
       if (orderId != null && mounted) {
-        print('🚀 [Checkout] Starting FCM notification process');
-        
-        // 🚀 Send FCM notifications to nearby riders
+        // ✅ Notify cook about new order
         try {
-          await FCMService().notifyNearbyRiders(
+          print('🔔 [Checkout] Notifying cook about new order...');
+          final dishNames = cartItemsList
+              .map((item) => item.dishName)
+              .join(', ');
+          
+          await FCMService().notifyCook(
+            cookId: _firstDish!.cookId,
             orderId: orderId,
-            pickupLat: _firstDish!.location.latitude,
-            pickupLng: _firstDish!.location.longitude,
-            radiusKm: 5.0,
+            customerName: authProvider.currentUser!.name,
+            dishNames: dishNames,
+            totalAmount: foodTotal,  // ✅ Using saved food total
           );
-          print('✅ [Checkout] FCM notifications sent');
+          print('✅ [Checkout] Cook notification sent with amount: ₹$foodTotal');
         } catch (e) {
-          print('⚠️ [Checkout] FCM notification failed: $e');
+          print('❌ [Checkout] Failed to notify cook: $e');
         }
+        
+        // ⚠️ [NORMAL FOOD] Do NOT notify riders immediately!
+        // Workflow: PLACED → Cook Accepts → PREPARING → READY → Riders see order
+        // Riders will see this order automatically when cook marks it READY
+        // (getUnassignedOrders filters for status=READY)
+        print('✅ [Checkout] Order placed. Cook must accept and prepare food.');
+        print('   Riders will see order when cook marks it READY.');
         
         // Clear cart first
         ordersProvider.clearCart();

@@ -53,6 +53,7 @@ class OrderModel {
   final String customerPhone;
   final String cookId;
   final String cookName;
+  final String? cookPhone;
   final List<OrderItem> dishItems;
   final double total;
   final String paymentMethod;
@@ -90,6 +91,7 @@ class OrderModel {
     required this.customerPhone,
     required this.cookId,
     required this.cookName,
+    this.cookPhone,
     required this.dishItems,
     required this.total,
     required this.paymentMethod,
@@ -127,6 +129,7 @@ class OrderModel {
       customerPhone: map['customerPhone'] ?? '',
       cookId: map['cookId'] ?? '',
       cookName: map['cookName'] ?? '',
+      cookPhone: map['cookPhone'],
       dishItems: (map['dishItems'] as List<dynamic>?)
               ?.map((item) => OrderItem.fromMap(item))
               .toList() ??
@@ -169,14 +172,22 @@ class OrderModel {
   }
 
   Map<String, dynamic> toMap() {
+    // Calculate food subtotal from dish items (price * quantity for all items)
+    final foodSubtotal = dishItems.fold<double>(
+      0.0,
+      (sum, item) => sum + (item.price * item.quantity),
+    );
+    
     return {
       'customerId': customerId,
       'customerName': customerName,
       'customerPhone': customerPhone,
       'cookId': cookId,
       'cookName': cookName,
+      'cookPhone': cookPhone,
       'dishItems': dishItems.map((item) => item.toMap()).toList(),
       'total': total,
+      'foodSubtotal': foodSubtotal, // 🍳 ADD: Food price only (for cook payment)
       'paymentMethod': paymentMethod,
       'status': status.name,
       'isHomeToOffice': isHomeToOffice,
@@ -229,6 +240,7 @@ class OrderModel {
       customerPhone: customerPhone,
       cookId: cookId,
       cookName: cookName,
+      cookPhone: cookPhone,
       dishItems: dishItems,
       total: total,
       paymentMethod: paymentMethod,

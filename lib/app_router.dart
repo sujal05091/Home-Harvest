@@ -24,11 +24,13 @@ import 'screens/cook/cook_dashboard_modern.dart'; // 🎨 NEW MODERN COOK UI
 import 'screens/cook/cook_orders_screen.dart';
 import 'screens/cook/cook_earnings_screen.dart';
 import 'screens/cook/cook_dishes_screen.dart';
-import 'screens/rider/home.dart';
-import 'screens/rider/rider_home_modern.dart'; // 🎨 NEW MODERN RIDER UI
+import 'screens/cook/cook_withdraw_screen.dart'; // 💸 COOK WITHDRAW SCREEN
+// import 'screens/rider/home.dart'; // OLD - NOT USED (using home_modern.dart instead)
+import 'screens/rider/home_modern.dart'; // 🎨 NEW MODERN RIDER UI
 import 'screens/rider/rider_earnings_screen.dart';
 import 'screens/rider/rider_history_screen.dart';
 import 'screens/rider/rider_active_delivery_screen.dart';
+import 'screens/rider/rider_withdraw_screen.dart'; // 💸 WITHDRAW SCREEN
 import 'screens/common/profile.dart';
 import 'screens/common/chat.dart';
 import 'screens/common/settings.dart';
@@ -43,16 +45,14 @@ import 'screens/common/payment_settings.dart';
 import 'screens/common/coming_soon.dart';
 // import 'screens/test/map_test_screen.dart'; // OLD Google Maps - Removed
 import 'screens/test/osm_test_screen.dart';
-import 'screens/customer/order_tracking_modern.dart' as modern_tracking; // 🎨 NEW MODERN UI
 import 'screens/customer/order_tracking_osm.dart'; // 🗺️ OSM TRACKING WITH TIMELINE
 import 'screens/customer/select_location_map_osm.dart';
 import 'screens/rider/navigation_osm.dart' as osm_navigation;
 
 // 🚀 NEW Real-Time Tracking Screens
 import 'screens/customer/finding_partner_screen.dart';
-import 'screens/customer/live_tracking_screen.dart';
-import 'screens/customer/order_tracking_live.dart'; // 📱 NEW COMPREHENSIVE LIVE TRACKING
-import 'screens/rider/rider_delivery_request_screen.dart';
+import 'screens/customer/premium_tracking_screen.dart'; // 🎨 PREMIUM SWIGGY-STYLE TRACKING
+import 'screens/rider/rider_delivery_request_modern.dart'; // 🎨 NEW MODERN FULL-SCREEN DELIVERY REQUEST
 
 class AppRouter {
   // Route names
@@ -87,6 +87,7 @@ class AppRouter {
   static const String cookOrders = '/cook/orders';
   static const String cookEarnings = '/cook/earnings';
   static const String cookDishes = '/cook/dishes';
+  static const String cookWithdraw = '/cook/withdraw';
   
   // Rider routes
   static const String riderHome = '/rider/home';
@@ -95,6 +96,7 @@ class AppRouter {
   static const String riderEarnings = '/rider/earnings';
   static const String riderHistory = '/rider/history';
   static const String riderActiveDelivery = '/rider/active-delivery';
+  static const String riderWithdraw = '/rider/withdraw'; // 💸 WITHDRAW
   
   // Common routes
   static const String profile = '/profile';
@@ -119,8 +121,7 @@ class AppRouter {
   
   // 🚀 NEW Real-Time Tracking Routes
   static const String findingPartner = '/customer/finding-partner';
-  static const String liveTracking = '/customer/live-tracking';
-  static const String orderTrackingLive = '/customer/order-tracking-live';
+  static const String premiumTracking = '/customer/premium-tracking'; // 🎨 NEW PREMIUM TRACKING
   static const String riderDeliveryRequest = '/rider/delivery-request';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -173,22 +174,16 @@ class AppRouter {
           builder: (_) => FindingPartnerScreen(orderId: args['orderId']),
         );
       
-      case liveTracking:
+      case premiumTracking: // 🎨 NEW PREMIUM SWIGGY-STYLE TRACKING
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(
-          builder: (_) => LiveTrackingScreen(orderId: args['orderId']),
+          builder: (_) => PremiumTrackingScreen(orderId: args['orderId']),
         );
       
-      case orderTrackingLive:
+      case riderDeliveryRequest: // 🎨 NOW USING MODERN FULL-SCREEN UI
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(
-          builder: (_) => OrderTrackingLiveScreen(orderId: args['orderId']),
-        );
-      
-      case riderDeliveryRequest:
-        final args = settings.arguments as Map<String, dynamic>;
-        return MaterialPageRoute(
-          builder: (_) => RiderDeliveryRequestScreen(orderId: args['orderId']),
+          builder: (_) => RiderDeliveryRequestModernScreen(orderId: args['orderId']),
         );
       
       case login:
@@ -272,17 +267,20 @@ class AppRouter {
       case cookDishes:
         return MaterialPageRoute(builder: (_) => const CookDishesScreen());
       
+      case cookWithdraw:
+        return MaterialPageRoute(builder: (_) => const CookWithdrawScreen());
+      
       case addDish:
         return MaterialPageRoute(builder: (_) => const AddDishScreen());
       
       case verificationStatus:
         return MaterialPageRoute(builder: (_) => const VerificationStatusScreen());
       
-      // Rider routes
+      // Rider routes (🎨 NOW USING MODERN UI BY DEFAULT)
       case riderHome:
-        return MaterialPageRoute(builder: (_) => const RiderHomeScreen());
+        return MaterialPageRoute(builder: (_) => const RiderHomeModernScreen());
       
-      // 🎨 NEW Modern Rider Routes
+      // 🎨 Modern Rider Routes
       case riderHomeModern:
         return MaterialPageRoute(builder: (_) => const RiderHomeModernScreen());
       
@@ -291,6 +289,9 @@ class AppRouter {
       
       case riderHistory:
         return MaterialPageRoute(builder: (_) => const RiderHistoryScreen());
+      
+      case riderWithdraw:
+        return MaterialPageRoute(builder: (_) => const RiderWithdrawScreen());
       
       case riderActiveDelivery:
         final args = settings.arguments as Map<String, dynamic>;

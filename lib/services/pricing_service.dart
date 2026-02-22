@@ -16,9 +16,15 @@ class PricingService {
   static const double DEFAULT_PER_KM_RATE = 8.0;         // ₹8 per km
   static const double DEFAULT_PETROL_COST_FACTOR = 2.0;  // ₹2 per km
 
-  // Commission split
-  static const double RIDER_COMMISSION_PERCENT = 80.0;    // Rider gets 80%
-  static const double PLATFORM_COMMISSION_PERCENT = 20.0; // Platform gets 20%
+  // Commission split for NORMAL FOOD  
+  // Rider: Gets 100% of delivery charge (distance × 8)
+  // Platform: Gets 10% of food price as commission
+  // Cook: Gets 90% of food price (food price - 10% commission)
+  static const double PLATFORM_FOOD_COMMISSION_PERCENT = 10.0; // Platform gets 10% of food price
+  
+  // Commission split for TIFFIN (different model)
+  static const double RIDER_COMMISSION_PERCENT = 80.0;    // Rider gets 80% of delivery charge
+  static const double PLATFORM_COMMISSION_PERCENT = 20.0; // Platform gets 20% of delivery charge
 
   /// Get pricing configuration from Firestore (admin controlled)
   Future<Map<String, double>> getPricingConfig() async {
@@ -52,42 +58,59 @@ class PricingService {
 
   /// Calculate delivery charge based on distance and order type
   /// 
-  /// PRODUCTION PRICING (Swiggy/Zomato-style):
-  /// - Normal Food: deliveryCharge = distanceKm × ₹8
-  /// - Tiffin: deliveryCharge = ₹20 (flat rate)
+  /// PRODUCTION PRICING:
   /// 
-  /// Rider receives 80% of delivery charge, Platform 20%
+  /// NORMAL FOOD:
+  /// - deliveryCharge = distanceKm × ₹8
+  /// - Rider gets: 100% of delivery charge
+  /// - Platform gets: 10% of food price (calculated separately in order creation)
+  /// - Cook gets: 90% of food price
+  /// 
+  /// TIFFIN:
+  /// - deliveryCharge = distanceKm × ₹8
+  /// - Rider gets: 80% of delivery charge
+  /// - Platform gets: 20% of delivery charge
   Future<Map<String, double>> calculateDeliveryCharge(
     double distanceKm, {
     OrderType orderType = OrderType.NORMAL_FOOD,
   }) async {
     try {
-      double deliveryCharge;
+      // 🍕 PRODUCTION DISTANCE-BASED PRICING
+      // Both normal food and tiffin: distanceKm × ₹8
+      final deliveryCharge = distanceKm * 8.0;
       
-      // 🍕 PRODUCTION TIERED PRICING
-      if (orderType == OrderType.TIFFIN) {
-        // Tiffin service: FLAT ₹20
-        deliveryCharge = 20.0;
-        print('🍱 [Pricing] TIFFIN order: Flat rate ₹${deliveryCharge.toStringAsFixed(2)}');
-      } else {
-        // Normal food: distanceKm × ₹8
-        deliveryCharge = distanceKm * 8.0;
-        print('🍕 [Pricing] NORMAL FOOD order: ${distanceKm.toStringAsFixed(2)} km × ₹8 = ₹${deliveryCharge.toStringAsFixed(2)}');
-      }
-
       // Round to 2 decimal places
       final roundedDeliveryCharge = double.parse(deliveryCharge.toStringAsFixed(2));
 
-      // Calculate rider and platform earnings (80/20 split)
-      final riderEarning = roundedDeliveryCharge * (RIDER_COMMISSION_PERCENT / 100);
-      final platformCommission = roundedDeliveryCharge * (PLATFORM_COMMISSION_PERCENT / 100);
+      double riderEarning;
+      double platformCommission;
 
-      print('💰 Delivery Pricing Breakdown:');
-      print('   Order Type: ${orderType == OrderType.TIFFIN ? "TIFFIN" : "NORMAL FOOD"}');
-      print('   Distance: ${distanceKm.toStringAsFixed(2)} km');
-      print('   Total Delivery: ₹${roundedDeliveryCharge.toStringAsFixed(2)}');
-      print('   Rider Earning (80%): ₹${riderEarning.toStringAsFixed(2)}');
-      print('   Platform Commission (20%): ₹${platformCommission.toStringAsFixed(2)}');
+      if (orderType == OrderType.NORMAL_FOOD) {
+        // NORMAL FOOD: Rider gets 100% of delivery charge
+        // Platform commission comes from food price (10%), calculated at order creation
+        riderEarning = roundedDeliveryCharge;
+        platformCommission = 0.0; // Commission from food price, not delivery charge
+        
+        print('🍕 [Pricing] NORMAL FOOD order: ${distanceKm.toStringAsFixed(2)} km × ₹8 = ₹${deliveryCharge.toStringAsFixed(2)}');
+        print('💰 Delivery Pricing Breakdown:');
+        print('   Order Type: NORMAL FOOD');
+        print('   Distance: ${distanceKm.toStringAsFixed(2)} km');
+        print('   Total Delivery: ₹${roundedDeliveryCharge.toStringAsFixed(2)}');
+        print('   Rider Earning (100%): ₹${riderEarning.toStringAsFixed(2)}');
+        print('   Platform Commission: From food price (10%), not delivery charge');
+      } else {
+        // TIFFIN: Rider gets 80%, Platform gets 20% of delivery charge
+        riderEarning = roundedDeliveryCharge * (RIDER_COMMISSION_PERCENT / 100);
+        platformCommission = roundedDeliveryCharge * (PLATFORM_COMMISSION_PERCENT / 100);
+        
+        print('🍱 [Pricing] TIFFIN order: ${distanceKm.toStringAsFixed(2)} km × ₹8 = ₹${deliveryCharge.toStringAsFixed(2)}');
+        print('💰 Delivery Pricing Breakdown:');
+        print('   Order Type: TIFFIN');
+        print('   Distance: ${distanceKm.toStringAsFixed(2)} km');
+        print('   Total Delivery: ₹${roundedDeliveryCharge.toStringAsFixed(2)}');
+        print('   Rider Earning (80%): ₹${riderEarning.toStringAsFixed(2)}');
+        print('   Platform Commission (20%): ₹${platformCommission.toStringAsFixed(2)}');
+      }
 
       return {
         'deliveryCharge': roundedDeliveryCharge,
@@ -99,11 +122,19 @@ class PricingService {
       
       // Fallback: Use distance-based pricing
       final fallbackCharge = distanceKm * 8.0;
-      return {
-        'deliveryCharge': double.parse(fallbackCharge.toStringAsFixed(2)),
-        'riderEarning': double.parse((fallbackCharge * 0.8).toStringAsFixed(2)),
-        'platformCommission': double.parse((fallbackCharge * 0.2).toStringAsFixed(2)),
-      };
+      if (orderType == OrderType.NORMAL_FOOD) {
+        return {
+          'deliveryCharge': double.parse(fallbackCharge.toStringAsFixed(2)),
+          'riderEarning': double.parse(fallbackCharge.toStringAsFixed(2)), // Rider gets 100%
+          'platformCommission': 0.0, // From food price
+        };
+      } else {
+        return {
+          'deliveryCharge': double.parse(fallbackCharge.toStringAsFixed(2)),
+          'riderEarning': double.parse((fallbackCharge * 0.8).toStringAsFixed(2)),
+          'platformCommission': double.parse((fallbackCharge * 0.2).toStringAsFixed(2)),
+        };
+      }
     }
   }
 

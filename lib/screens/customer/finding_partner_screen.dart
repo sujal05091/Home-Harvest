@@ -163,7 +163,8 @@ class _FindingPartnerScreenState extends State<FindingPartnerScreen>
 
           // Auto-navigate when rider accepts (only once)
           if (!_hasNavigated && 
-              (order.status == OrderStatus.RIDER_ACCEPTED ||
+              (order.status == OrderStatus.RIDER_ASSIGNED ||
+               order.status == OrderStatus.RIDER_ACCEPTED ||
                order.status == OrderStatus.ON_THE_WAY_TO_PICKUP ||
                order.status == OrderStatus.PICKED_UP ||
                order.status == OrderStatus.ON_THE_WAY_TO_DROP)) {
@@ -213,6 +214,52 @@ class _FindingPartnerScreenState extends State<FindingPartnerScreen>
                 ],
               ),
             );
+          }
+
+          // 🍕 NORMAL FOOD WORKFLOW STAGES - Show different UI based on status
+          // isHomeToOffice = true means Tiffin, false means Normal Food
+          final isNormalFood = !order.isHomeToOffice;
+          String stageTitle = '';
+          String stageDescription = '';
+          String lottieAsset = 'assets/lottie/delivery motorbike.json';
+          Color stageColor = const Color(0xFFFF6B35);
+
+          if (isNormalFood) {
+            if (order.status == OrderStatus.PLACED) {
+              // Stage 1: Waiting for cook to accept
+              stageTitle = 'Waiting for Cook';
+              stageDescription = 'Cook will accept your order soon...';
+              lottieAsset = 'assets/lottie/cooking.json';
+              stageColor = Colors.orange;
+            } else if (order.status == OrderStatus.ACCEPTED) {
+              // Stage 2: Cook accepted, starting to prepare
+              stageTitle = '✅ Cook Accepted!';
+              stageDescription = 'Cook is getting ready to prepare your food';
+              lottieAsset = 'assets/lottie/cooking.json';
+              stageColor = Colors.green;
+            } else if (order.status == OrderStatus.PREPARING) {
+              // Stage 3: Cook is preparing
+              stageTitle = '👨‍🍳 Cook is Preparing';
+              stageDescription = 'Your delicious food is being prepared with care';
+              lottieAsset = 'assets/lottie/cooking.json';
+              stageColor = Colors.blue;
+            } else if (order.status == OrderStatus.READY) {
+              // Stage 4: Food ready, finding rider
+              stageTitle = 'Finding Delivery Partner';
+              stageDescription = 'Searching for nearest rider to deliver your food';
+              lottieAsset = 'assets/lottie/delivery motorbike.json';
+              stageColor = const Color(0xFFFF6B35);
+            } else {
+              // Fallback for other statuses
+              stageTitle = 'Processing Order';
+              stageDescription = 'Please wait...';
+            }
+          } else {
+            // TIFFIN orders: directly find rider (no cook involved)
+            stageTitle = 'Finding Delivery Partner';
+            stageDescription = 'Searching for nearest rider for your tiffin';
+            lottieAsset = 'assets/lottie/delivery motorbike.json';
+            stageColor = const Color(0xFFFF6B35);
           }
 
           return Stack(
@@ -281,37 +328,44 @@ class _FindingPartnerScreenState extends State<FindingPartnerScreen>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Lottie animation
+                          // Lottie animation (dynamic based on stage)
                           SizedBox(
                             height: 150,
                             child: Lottie.asset(
-                              'assets/lottie/delivery motorbike.json',
+                              lottieAsset,
                               controller: _animationController,
                               fit: BoxFit.contain,
+                              onWarning: (warning) {
+                                print('⚠️ Lottie warning: $warning');
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                // Fallback to delivery animation if cooking.json not available
+                                return Lottie.asset(
+                                  'assets/lottie/delivery motorbike.json',
+                                  controller: _animationController,
+                                  fit: BoxFit.contain,
+                                );
+                              },
                             ),
                           ),
 
                           const SizedBox(height: 24),
 
-                          // Status text
-                          const Text(
-                            'Finding Nearest Delivery Partner',
+                          // Status text (dynamic based on stage)
+                          Text(
+                            stageTitle,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF2D3142),
+                              color: stageColor,
                             ),
                           ),
 
                           const SizedBox(height: 12),
 
                           Text(
-                            order.status == OrderStatus.PLACED
-                                ? 'Please wait while we find a rider near you'
-                                : order.status == OrderStatus.RIDER_ASSIGNED
-                                    ? 'Rider assigned! Waiting for acceptance...'
-                                    : 'Connecting you with the delivery partner...',
+                            stageDescription,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 14,

@@ -206,7 +206,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
           if (isOngoing) {
             Navigator.pushNamed(
               context,
-              AppRouter.orderTrackingLive,
+              AppRouter.premiumTracking,
               arguments: {'orderId': order.orderId},
             );
           }
@@ -394,7 +394,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                         onPressed: () {
                           Navigator.pushNamed(
                             context,
-                            AppRouter.orderTrackingLive,
+                            AppRouter.premiumTracking,
                             arguments: {'orderId': order.orderId},
                           );
                         },

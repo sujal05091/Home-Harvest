@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/auth_provider.dart';
+import '../customer/select_location_map_osm.dart'; // Map location picker
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -18,9 +19,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _scrollController = ScrollController();
   late TextEditingController _usernameController;
   late TextEditingController _emailController;
+  late TextEditingController _addressController;
   final ImagePicker _picker = ImagePicker();
   File? _selectedImage;
   bool _isUploading = false;
+  GeoPoint? _selectedLocation; // Store selected GeoPoint from map
   
   @override
   void initState() {
@@ -30,6 +33,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     
     _usernameController = TextEditingController(text: user?.name ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
+    _addressController = TextEditingController(text: user?.address ?? '');
+    _selectedLocation = user?.location; // Initialize with user's current location
   }
 
   @override
@@ -37,6 +42,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _scrollController.dispose();
     _usernameController.dispose();
     _emailController.dispose();
+    _addressController.dispose();
     super.dispose();
   }
 
@@ -144,6 +150,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  // Method to open map for location selection
+  Future<void> _selectLocationOnMap() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SelectLocationMapScreen(
+          initialLocation: _selectedLocation,
+        ),
+      ),
+    );
+
+    if (result != null && result is Map<String, dynamic>) {
+      setState(() {
+        _selectedLocation = result['location'] as GeoPoint;
+        // Optionally update address from reverse geocoding
+        if (result['address'] != null && result['address'].toString().isNotEmpty) {
+          _addressController.text = result['address'];
+        }
+      });
+    }
+  }
+
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -169,22 +197,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         }
       }
 
+      // Use location from map picker
+      GeoPoint? location = _selectedLocation;
+      
+      // Validate location for cook/rider
+      if ((currentUser.role == 'cook' || currentUser.role == 'rider') && location == null) {
+        throw Exception('Please select your location on the map');
+      }
+      
       // Update user data in Firestore
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .update({
+      final updateData = {
         'name': _usernameController.text.trim(),
         'email': _emailController.text.trim(),
         'photoUrl': photoUrl,
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      };
+      
+      // Add address and location if provided
+      if (_addressController.text.trim().isNotEmpty) {
+        updateData['address'] = _addressController.text.trim();
+      }
+      if (location != null) {
+        updateData['location'] = location;
+      }
+      
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .update(updateData);
 
       // Update local user data
       final updatedUser = currentUser.copyWith(
         name: _usernameController.text.trim(),
         email: _emailController.text.trim(),
         photoUrl: photoUrl,
+        address: _addressController.text.trim().isNotEmpty ? _addressController.text.trim() : currentUser.address,
+        location: location ?? currentUser.location,
         updatedAt: DateTime.now(),
       );
 
@@ -468,6 +516,146 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             ],
                           ),
                         ),
+
+                        const SizedBox(height: 20),
+
+                        // Restaurant/Delivery Address Section (for Cook/Rider)
+                        if (user?.role == 'cook' || user?.role == 'rider')
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  user?.role == 'cook' ? 'Restaurant Address' : 'Base Location',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                TextFormField(
+                                  controller: _addressController,
+                                  maxLines: 2,
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter your ${user?.role == 'cook' ? 'restaurant' : 'base'} address',
+                                    hintStyle: TextStyle(color: Colors.grey[400]),
+                                    filled: true,
+                                    fillColor: Colors.grey[200],
+                                    prefixIcon: Icon(
+                                      Icons.location_on_outlined,
+                                      color: _addressController.text.isEmpty
+                                          ? Colors.grey
+                                          : const Color(0xFFFC8019),
+                                      size: 24,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide(color: Colors.grey[300]!),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide(color: Colors.grey[300]!),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFFFC8019),
+                                        width: 1,
+                                      ),
+                                    ),
+                                  ),
+                                  onChanged: (value) => setState(() {}),
+                                ),
+                                const SizedBox(height: 16),
+                                
+                                // Location Selection with Map
+                                const Text(
+                                  'Location Coordinates',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                
+                                // Select on Map Button
+                                InkWell(
+                                  onTap: _selectLocationOnMap,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.grey[300]!),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.map_outlined,
+                                          color: _selectedLocation != null
+                                              ? const Color(0xFFFC8019)
+                                              : Colors.grey,
+                                          size: 24,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                _selectedLocation != null
+                                                    ? 'Location Selected'
+                                                    : 'Select Location on Map',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: _selectedLocation != null
+                                                      ? Colors.black87
+                                                      : Colors.grey[600],
+                                                ),
+                                              ),
+                                              if (_selectedLocation != null) ...[
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey[600],
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        Icon(
+                                          _selectedLocation != null
+                                              ? Icons.check_circle
+                                              : Icons.arrow_forward_ios,
+                                          color: _selectedLocation != null
+                                              ? Colors.green
+                                              : Colors.grey,
+                                          size: _selectedLocation != null ? 24 : 16,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '📍 Tap to select your ${user?.role == 'cook' ? 'restaurant' : 'base'} location on the map',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
 
                         const SizedBox(height: 20),
 

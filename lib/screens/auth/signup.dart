@@ -98,6 +98,101 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
+  Future<void> _signupWithGoogle() async {
+    setState(() => _isLoading = true);
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // Use the role from widget parameter or default to 'customer'
+    final role = widget.role ?? 'customer';
+    
+    bool success = await authProvider.signInWithGoogle(role: role);
+
+    setState(() => _isLoading = false);
+
+    if (success && mounted) {
+      // Navigate based on role
+      switch (authProvider.currentUser?.role) {
+        case 'customer':
+          Navigator.pushReplacementNamed(context, AppRouter.customerHome);
+          break;
+        case 'cook':
+          // Check if cook is verified
+          if (authProvider.currentUser?.verified == true) {
+            Navigator.pushReplacementNamed(context, AppRouter.cookDashboard);
+          } else {
+            Navigator.pushReplacementNamed(context, AppRouter.verificationStatus);
+          }
+          break;
+        case 'rider':
+          Navigator.pushReplacementNamed(context, AppRouter.riderHome);
+          break;
+      }
+    } else if (mounted && authProvider.errorMessage != null) {
+      // Show detailed error dialog for configuration issues
+      if (authProvider.errorMessage!.contains('not configured') || 
+          authProvider.errorMessage!.contains('ApiException: 10')) {
+        _showGoogleSignInErrorDialog();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authProvider.errorMessage ?? 'Google Sign Up failed'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showGoogleSignInErrorDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Google Sign-In Setup Required',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Google Sign-In needs Firebase configuration.',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 12),
+            Text('Quick Steps:', style: TextStyle(fontWeight: FontWeight.w600)),
+            SizedBox(height: 8),
+            Text('1. Get SHA-1 fingerprint'),
+            Text('2. Add to Firebase Console'),
+            Text('3. Download google-services.json'),
+            Text('4. Restart app'),
+            SizedBox(height: 12),
+            Text(
+              'For now, please use Email/Password signup instead.',
+              style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Got It'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -389,14 +484,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 SizedBox(
                   height: 56,
                   child: OutlinedButton.icon(
-                    onPressed: _isLoading
-                        ? null
-                        : () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('Google Sign Up coming soon!')),
-                            );
-                          },
+                    onPressed: _isLoading ? null : _signupWithGoogle,
                     icon: const FaIcon(
                       FontAwesomeIcons.google,
                       size: 20,

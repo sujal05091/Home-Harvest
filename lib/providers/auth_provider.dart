@@ -60,6 +60,7 @@ class AuthProvider with ChangeNotifier {
   Future<bool> signIn({
     required String email,
     required String password,
+    String? role,
   }) async {
     try {
       _isLoading = true;
@@ -69,7 +70,36 @@ class AuthProvider with ChangeNotifier {
       _currentUser = await _authService.signInWithEmail(
         email: email,
         password: password,
+        role: role,
       );
+
+      if (_currentUser != null) {
+        // Update FCM token
+        String? token = await _notificationService.getToken();
+        if (token != null) {
+          await _authService.updateFCMToken(_currentUser!.uid, token);
+        }
+      }
+
+      _isLoading = false;
+      notifyListeners();
+      return _currentUser != null;
+    } catch (e) {
+      _errorMessage = e.toString();
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // Sign in with Google
+  Future<bool> signInWithGoogle({required String role}) async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      _currentUser = await _authService.signInWithGoogle(role: role);
 
       if (_currentUser != null) {
         // Update FCM token

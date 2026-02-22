@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
 
 /// Provider for managing user favorites (cooks and dishes)
@@ -38,14 +39,24 @@ class FavoritesProvider with ChangeNotifier {
 
   /// Toggle cook as favorite
   Future<void> toggleCookFavorite(String cookId) async {
-    if (_userId == null) return;
+    // Get userId from Firebase Auth if not set
+    if (_userId == null) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        print('❌ No user logged in - cannot toggle favorite');
+        return;
+      }
+      _userId = user.uid;
+    }
 
     final isFavorite = _favoriteCooks.contains(cookId);
     
     if (isFavorite) {
       _favoriteCooks.remove(cookId);
+      print('💔 Removed cook from favorites: $cookId');
     } else {
       _favoriteCooks.add(cookId);
+      print('❤️ Added cook to favorites: $cookId');
     }
     notifyListeners();
 
@@ -55,7 +66,9 @@ class FavoritesProvider with ChangeNotifier {
         'dishes': _favoriteDishes,
         'updatedAt': Timestamp.now(),
       }, SetOptions(merge: true));
+      print('✅ Favorites saved to Firestore');
     } catch (e) {
+      print('❌ Error saving favorites: $e');
       // Revert on error
       if (isFavorite) {
         _favoriteCooks.add(cookId);
@@ -69,14 +82,24 @@ class FavoritesProvider with ChangeNotifier {
 
   /// Toggle dish as favorite
   Future<void> toggleDishFavorite(String dishId) async {
-    if (_userId == null) return;
+    // Get userId from Firebase Auth if not set
+    if (_userId == null) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        print('❌ No user logged in - cannot toggle favorite');
+        return;
+      }
+      _userId = user.uid;
+    }
 
     final isFavorite = _favoriteDishes.contains(dishId);
     
     if (isFavorite) {
       _favoriteDishes.remove(dishId);
+      print('💔 Removed from favorites: $dishId');
     } else {
       _favoriteDishes.add(dishId);
+      print('❤️ Added to favorites: $dishId');
     }
     notifyListeners();
 
@@ -86,7 +109,9 @@ class FavoritesProvider with ChangeNotifier {
         'dishes': _favoriteDishes,
         'updatedAt': Timestamp.now(),
       }, SetOptions(merge: true));
+      print('✅ Favorites saved to Firestore');
     } catch (e) {
+      print('❌ Error saving favorites: $e');
       // Revert on error
       if (isFavorite) {
         _favoriteDishes.add(dishId);

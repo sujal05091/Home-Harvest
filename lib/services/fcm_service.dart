@@ -99,7 +99,33 @@ class FCMService {
         onDidReceiveNotificationResponse: _onNotificationTap,
       );
 
+      // 🔔 CRITICAL FIX: Set up FCM message listeners
+      // Listen for foreground messages (app is open)
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        print('📩 [FCM] Foreground message received');
+        print('   Title: ${message.notification?.title}');
+        print('   Body: ${message.notification?.body}');
+        print('   Data: ${message.data}');
+        _handleForegroundMessage(message);
+      });
+
+      // Listen for when user taps notification (app in background)
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        print('👆 [FCM] Notification tapped (app in background)');
+        print('   Data: ${message.data}');
+        _handleNotificationTap(message);
+      });
+
+      // Check for notification that opened the app (terminated state)
+      final initialMessage = await _fcm.getInitialMessage();
+      if (initialMessage != null) {
+        print('🚀 [FCM] App opened from notification (terminated state)');
+        print('   Data: ${initialMessage.data}');
+        _handleNotificationTap(initialMessage);
+      }
+
       print('✅ FCM Service initialized successfully');
+      print('✅ FCM Message listeners registered');
     } catch (e) {
       print('❌ FCM initialization error: $e');
     }
@@ -187,6 +213,78 @@ class FCMService {
         }
       } catch (e2) {
         print('❌ Failed to save FCM token: $e2');
+      }
+    }
+  }
+
+  /// Send notification to cook when new order is placed
+  Future<void> notifyCook({
+    required String cookId,
+    required String orderId,
+    required String customerName,
+    required String dishNames,
+    required double totalAmount,  // This is the food price only (what cook earns)
+  }) async {
+    try {
+      print('🔍 [notifyCook] Starting for cook: $cookId, order: $orderId');
+      print('   Customer: $customerName');
+      print('   Dishes: $dishNames');
+      print('   Food Amount: ₹$totalAmount (cook earnings)');
+      
+      // Get cook's FCM token
+      final cookDoc = await _firestore.collection('users').doc(cookId).get();
+      
+      if (!cookDoc.exists) {
+        print('❌ [notifyCook] Cook document does not exist: $cookId');
+        return;
+      }
+      
+      final fcmToken = cookDoc.data()?['fcmToken'];
+
+      if (fcmToken == null) {
+        print('⚠️ [notifyCook] Cook $cookId has no FCM token (will still create notification doc)');
+      } else {
+        print('✅ [notifyCook] Cook has FCM token: ${fcmToken.substring(0, 20)}...');
+      }
+
+      print('📤 [notifyCook] Creating notification document for cook: $cookId');
+      
+      // Create a notification document that cook's app will listen to
+      final notificationData = {
+        'recipientId': cookId,
+        'orderId': orderId,
+        'type': 'NEW_ORDER',
+        'title': '🔔 New Order Received!',
+        'body': '$customerName ordered $dishNames for ₹${totalAmount.toStringAsFixed(0)}',
+        'data': {
+          'orderId': orderId,
+          'type': 'NEW_ORDER',
+          'customerName': customerName,
+          'dishNames': dishNames,
+          'totalAmount': totalAmount,  // Food price (cook's earnings)
+        },
+        'read': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+      
+      print('📝 [notifyCook] Notification data: ${notificationData.toString().substring(0, 150)}...');
+      
+      final docRef = await _firestore.collection('notifications').add(notificationData);
+      
+      print('✅ [notifyCook] Notification document created successfully!');
+      print('   Document ID: ${docRef.id}');
+      print('   Recipient: $cookId');
+      print('   Order: $orderId');
+      print('   🎯 Cook should see popup now if they are logged in!');
+      
+    } catch (e, stackTrace) {
+      print('❌ [notifyCook] ERROR sending notification to cook: $e');
+      print('   Stack trace: $stackTrace');
+      print('   Cook ID: $cookId');
+      print('   Order ID: $orderId');
+      
+      if (e.toString().contains('PERMISSION_DENIED')) {
+        print('🚨 PERMISSION DENIED - Firestore rules are blocking notification creation!');
       }
     }
   }

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme.dart';
+import '../../providers/auth_provider.dart';
+import '../../models/delivery_model.dart';
+import '../../models/order_model.dart';
 
 class RiderHistoryScreen extends StatefulWidget {
   const RiderHistoryScreen({super.key});
@@ -14,75 +19,40 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Today', 'This Week', 'This Month'];
 
-  // Mock data for completed deliveries
-  final List<Map<String, dynamic>> _deliveryHistory = [
-    {
-      'id': 'DEL001',
-      'date': DateTime.now().subtract(const Duration(hours: 2)),
-      'pickupAddress': 'Spice Kitchen, MG Road',
-      'dropAddress': '123 Park Avenue, Indiranagar',
-      'distance': 3.5,
-      'duration': 15,
-      'earnings': 30,
-      'customerName': 'Priya Sharma',
-      'rating': 5.0,
-      'status': 'Completed',
-    },
-    {
-      'id': 'DEL002',
-      'date': DateTime.now().subtract(const Duration(hours: 5)),
-      'pickupAddress': 'Home Harvest Kitchen, Koramangala',
-      'dropAddress': '456 Lake View Apartments',
-      'distance': 5.2,
-      'duration': 22,
-      'earnings': 45,
-      'customerName': 'Rahul Verma',
-      'rating': 4.5,
-      'status': 'Completed',
-    },
-    {
-      'id': 'DEL003',
-      'date': DateTime.now().subtract(const Duration(days: 1)),
-      'pickupAddress': 'Taste of India, Whitefield',
-      'dropAddress': '789 Tech Park Road',
-      'distance': 8.3,
-      'duration': 35,
-      'earnings': 65,
-      'customerName': 'Anita Desai',
-      'rating': 5.0,
-      'status': 'Completed',
-    },
-    {
-      'id': 'DEL004',
-      'date': DateTime.now().subtract(const Duration(days: 2)),
-      'pickupAddress': 'Masala Magic, Jayanagar',
-      'dropAddress': '321 Green Valley Society',
-      'distance': 4.1,
-      'duration': 18,
-      'earnings': 35,
-      'customerName': 'Vikram Singh',
-      'rating': 4.0,
-      'status': 'Completed',
-    },
-    {
-      'id': 'DEL005',
-      'date': DateTime.now().subtract(const Duration(days: 3)),
-      'pickupAddress': 'Royal Kitchen, BTM Layout',
-      'dropAddress': '567 Silk Board Junction',
-      'distance': 6.8,
-      'duration': 28,
-      'earnings': 55,
-      'customerName': 'Sneha Patel',
-      'rating': 5.0,
-      'status': 'Completed',
-    },
-  ];
+  // 📊 Fetch real completed deliveries from Firestore
+  Stream<List<Map<String, dynamic>>> _getDeliveryHistory(String riderId) {
+    return FirebaseFirestore.instance
+        .collection('orders')
+        .where('assignedRiderId', isEqualTo: riderId)
+        .where('status', isEqualTo: OrderStatus.DELIVERED.name)
+        .snapshots()
+        .map((snapshot) {
+      final deliveries = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'date': (data['deliveredAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          'pickupAddress': data['pickupAddress'] ?? 'Unknown',
+          'dropAddress': data['dropAddress'] ?? 'Unknown',
+          'distance': (data['distance'] as num?)?.toDouble() ?? 0.0,
+          'earnings': (data['riderEarning'] as num?)?.toDouble() ?? 0.0, // 💰 Real rider earning
+          'customerName': data['customerName'] ?? 'Customer',
+          'customerPhone': data['customerPhone'] ?? '',
+          'status': 'Completed',
+          'deliveryCharge': (data['deliveryCharge'] as num?)?.toDouble() ?? 0.0,
+        };
+      }).toList();
+      // Sort by date in descending order (newest first)
+      deliveries.sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+      return deliveries;
+    });
+  }
 
-  List<Map<String, dynamic>> get _filteredDeliveries {
+  List<Map<String, dynamic>> _filterDeliveries(List<Map<String, dynamic>> deliveries) {
     final now = DateTime.now();
     switch (_selectedFilter) {
       case 'Today':
-        return _deliveryHistory.where((d) {
+        return deliveries.where((d) {
           final date = d['date'] as DateTime;
           return date.year == now.year &&
               date.month == now.month &&
@@ -90,32 +60,55 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
         }).toList();
       case 'This Week':
         final weekStart = now.subtract(Duration(days: now.weekday - 1));
-        return _deliveryHistory.where((d) {
+        return deliveries.where((d) {
           final date = d['date'] as DateTime;
           return date.isAfter(weekStart);
         }).toList();
       case 'This Month':
-        return _deliveryHistory.where((d) {
+        return deliveries.where((d) {
           final date = d['date'] as DateTime;
           return date.year == now.year && date.month == now.month;
         }).toList();
       default:
-        return _deliveryHistory;
+        return deliveries;
     }
-  }
-
-  double get _totalEarnings {
-    return _filteredDeliveries.fold(0, (sum, delivery) => sum + (delivery['earnings'] as num).toDouble());
-  }
-
-  double get _totalDistance {
-    return _filteredDeliveries.fold(0, (sum, delivery) => sum + (delivery['distance'] as num).toDouble());
   }
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final riderId = authProvider.currentUser?.uid;
+
+    if (riderId == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please login to view history')),
+      );
+    }
+
     return Scaffold(
-      body: CustomScrollView(
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _getDeliveryHistory(riderId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+
+          final allDeliveries = snapshot.data ?? [];
+          final filteredDeliveries = _filterDeliveries(allDeliveries);
+          
+          // 💰 Calculate totals from REAL earnings
+          final totalEarnings = filteredDeliveries.fold<double>(
+            0, (sum, d) => sum + (d['earnings'] as num).toDouble()
+          );
+          final totalDistance = filteredDeliveries.fold<double>(
+            0, (sum, d) => sum + (d['distance'] as num).toDouble()
+          );
+
+          return CustomScrollView(
         slivers: [
           // Gradient AppBar
           SliverAppBar(
@@ -155,7 +148,7 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
                   Expanded(
                     child: _buildSummaryCard(
                       'Total Deliveries',
-                      '${_filteredDeliveries.length}',
+                      '${filteredDeliveries.length}',
                       Icons.delivery_dining,
                       Colors.cyan,
                     ),
@@ -164,7 +157,7 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
                   Expanded(
                     child: _buildSummaryCard(
                       'Total Earnings',
-                      '₹${_totalEarnings.toStringAsFixed(0)}',
+                      '₹${totalEarnings.toStringAsFixed(2)}',
                       Icons.payments,
                       AppTheme.successGreen,
                     ),
@@ -173,7 +166,7 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
                   Expanded(
                     child: _buildSummaryCard(
                       'Distance',
-                      '${_totalDistance.toStringAsFixed(1)} km',
+                      '${totalDistance.toStringAsFixed(1)} km',
                       Icons.route,
                       AppTheme.primaryOrange,
                     ),
@@ -220,7 +213,7 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
           ),
 
           // Delivery History List
-          if (_filteredDeliveries.isEmpty)
+          if (filteredDeliveries.isEmpty)
             SliverFillRemaining(
               child: Center(
                 child: Column(
@@ -256,16 +249,18 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final delivery = _filteredDeliveries[index];
+                  final delivery = filteredDeliveries[index];
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     child: _buildDeliveryCard(delivery),
                   );
                 },
-                childCount: _filteredDeliveries.length,
+                childCount: filteredDeliveries.length,
               ),
             ),
         ],
+      );
+        },
       ),
     );
   }
@@ -338,43 +333,49 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.cyan.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.delivery_dining,
-                          color: Colors.cyan,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Order #${delivery['id']}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary,
-                            ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.cyan.withOpacity(0.1),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '$timeStr · $dateStr',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: Colors.grey[500],
-                            ),
+                          child: const Icon(
+                            Icons.delivery_dining,
+                            color: Colors.cyan,
+                            size: 20,
                           ),
-                        ],
-                      ),
-                    ],
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Order #${delivery['id']}',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '$timeStr · $dateStr',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  color: Colors.grey[500],
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

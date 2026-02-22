@@ -6,7 +6,8 @@ class UserModel {
   final String phone;
   final String name;
   final String role; // customer, cook, rider
-  final bool verified; // for cooks - verification status
+  final bool verified; // LEGACY: for backward compatibility
+  final String? verificationStatus; // NEW: PENDING, APPROVED, REJECTED (for cooks)
   final String? photoUrl;
   final String? address;
   final GeoPoint? location;
@@ -21,6 +22,7 @@ class UserModel {
     required this.name,
     required this.role,
     this.verified = false,
+    this.verificationStatus, // NEW: defaults to null
     this.photoUrl,
     this.address,
     this.location,
@@ -37,6 +39,7 @@ class UserModel {
       name: map['name'] ?? '',
       role: map['role'] ?? 'customer',
       verified: map['verified'] ?? false,
+      verificationStatus: map['verificationStatus'], // NEW field
       photoUrl: map['photoUrl'],
       address: map['address'],
       location: map['location'],
@@ -53,6 +56,7 @@ class UserModel {
       'name': name,
       'role': role,
       'verified': verified,
+      'verificationStatus': verificationStatus, // NEW field
       'photoUrl': photoUrl,
       'address': address,
       'location': location,
@@ -68,6 +72,7 @@ class UserModel {
     String? name,
     String? role,
     bool? verified,
+    String? verificationStatus, // NEW field
     String? photoUrl,
     String? address,
     GeoPoint? location,
@@ -81,6 +86,7 @@ class UserModel {
       name: name ?? this.name,
       role: role ?? this.role,
       verified: verified ?? this.verified,
+      verificationStatus: verificationStatus ?? this.verificationStatus, // NEW
       photoUrl: photoUrl ?? this.photoUrl,
       address: address ?? this.address,
       location: location ?? this.location,

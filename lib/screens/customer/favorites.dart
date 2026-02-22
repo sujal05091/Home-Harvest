@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../providers/favorites_provider.dart';
 import '../../providers/dishes_provider.dart';
+import '../../providers/auth_provider.dart' as auth;
 import '../../app_router.dart';
 import '../../models/dish_model.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -16,7 +18,21 @@ class FavoritesScreen extends StatefulWidget {
 class _FavoritesScreenState extends State<FavoritesScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  String _selectedCategory = 'All';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<auth.AuthProvider>(context, listen: false);
+      final userId = authProvider.currentUser?.uid;
+      
+      // Load dishes and favorites if user is logged in
+      if (userId != null) {
+        Provider.of<DishesProvider>(context, listen: false).loadDishes();
+        Provider.of<FavoritesProvider>(context, listen: false).loadFavorites(userId);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -113,24 +129,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             ),
 
             // ──────────────────────────────────────
-            // 🎯 CATEGORY CHIPS - Horizontal Scroll
-            // ──────────────────────────────────────
-            Container(
-              height: 50,
-              margin: const EdgeInsets.only(left: 20, bottom: 16),
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  _buildCategoryChip('All', Icons.restaurant_menu),
-                  _buildCategoryChip('Burgers', Icons.lunch_dining),
-                  _buildCategoryChip('Pizza', Icons.local_pizza),
-                  _buildCategoryChip('Desserts', Icons.cake),
-                  _buildCategoryChip('Drinks', Icons.local_drink),
-                ],
-              ),
-            ),
-
-            // ──────────────────────────────────────
             // 📦 FAVORITES LIST or EMPTY STATE
             // ──────────────────────────────────────
             Expanded(
@@ -155,48 +153,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // 🎨 CATEGORY CHIP
-  // ═══════════════════════════════════════════════════════════
-  Widget _buildCategoryChip(String label, IconData icon) {
-    final isActive = _selectedCategory == label;
-    
-    return GestureDetector(
-      onTap: () => setState(() => _selectedCategory = label),
-      child: Container(
-        margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        decoration: BoxDecoration(
-          color: isActive ? const Color(0xFFFC8019) : Colors.transparent,
-          border: Border.all(
-            color: isActive ? const Color(0xFFFC8019) : Colors.grey[300]!,
-            width: 1.5,
-          ),
-          borderRadius: BorderRadius.circular(30),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isActive ? Colors.white : Colors.grey[600],
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? Colors.white : Colors.grey[700],
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // 🍽️ FAVORITE CARD - Modern Design
+  // ️ FAVORITE CARD - Modern Design
   // ═══════════════════════════════════════════════════════════
   Widget _buildFavoriteCard(
     BuildContext context,
@@ -288,24 +245,30 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () {
-                            favoritesProvider.toggleDishFavorite(dish.dishId);
+                        Consumer<FavoritesProvider>(
+                          builder: (context, favProvider, _) {
+                            final isFav = favProvider.isDishFavorite(dish.dishId);
+                            return GestureDetector(
+                              onTap: () {
+                                print('❤️ Favorites screen - Heart clicked: ${dish.dishId}');
+                                favProvider.toggleDishFavorite(dish.dishId);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: isFav 
+                                      ? Colors.red.withOpacity(0.1)
+                                      : Colors.grey[100],
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  isFav ? Icons.favorite : Icons.favorite_border,
+                                  color: isFav ? Colors.red : Colors.grey[400],
+                                  size: 20,
+                                ),
+                              ),
+                            );
                           },
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: isFavorite 
-                                  ? const Color(0xFFFC8019).withOpacity(0.1)
-                                  : Colors.grey[100],
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              isFavorite ? Icons.favorite : Icons.favorite_border,
-                              color: isFavorite ? const Color(0xFFFC8019) : Colors.grey[400],
-                              size: 20,
-                            ),
-                          ),
                         ),
                       ],
                     ),
@@ -366,7 +329,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                     Row(
                       children: [
                         const Text(
-                          '\$ ',
+                          '₹ ',
                           style: TextStyle(
                             fontSize: 14,
                             color: Color(0xFFFC8019),

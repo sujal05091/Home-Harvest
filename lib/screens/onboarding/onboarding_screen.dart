@@ -69,11 +69,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       colors: [Color(0xFFFF6E40), Color(0xFFFF9E80)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
+                      
                     ),
                     icon: Icons.restaurant_menu,
                     title: 'Healthy Home-Cooked Food',
                     subtitle: 'Fresh, low-oil meals made by trusted home cooks',
-                    imagePath: 'assets/images/onboarding_1.jpeg',
+                    imagePath: 'assets/images/onboarding_1.png',
+                    
+                    
                   ),
                   _OnboardingPage(
                     imageGradient: LinearGradient(
@@ -84,7 +87,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     icon: Icons.card_travel,
                     title: 'Home to Office Tiffin',
                     subtitle: 'Get food from your home delivered to your workplace',
-                    imagePath: 'assets/images/onboarding_2.jpeg',
+                    imagePath: 'assets/images/onboarding_2.jpg',
                   ),
                   _OnboardingPage(
                     imageGradient: LinearGradient(
@@ -95,7 +98,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     icon: Icons.location_on,
                     title: 'Live Delivery Tracking',
                     subtitle: 'Track your delivery partner in real time',
-                    imagePath: 'assets/images/onboarding_3.jpeg',
+                    imagePath: 'assets/images/onboarding_3.png',
                   ),
                 ],
               ),

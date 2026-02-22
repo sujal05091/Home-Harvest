@@ -7,6 +7,7 @@ import '../../services/firestore_service.dart';
 import '../../services/osm_maps_service.dart';
 import '../../services/rider_location_service.dart';
 import '../../services/wallet_service.dart';
+import '../../services/cook_wallet_service.dart';
 import '../../models/delivery_model.dart';
 import '../../models/order_model.dart';
 import '../../widgets/osm_map_widget.dart';
@@ -288,6 +289,22 @@ class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
       if (orderDoc.exists && _riderId != null) {
         final orderData = orderDoc.data()!;
         final riderEarning = (orderData['riderEarning'] as num?)?.toDouble() ?? 0.0;
+        final cookId = orderData['cookId'] as String?;
+        
+        // Calculate foodSubtotal from dish items OR use saved value
+        double foodSubtotal = 0.0;
+        if (orderData.containsKey('foodSubtotal')) {
+          foodSubtotal = (orderData['foodSubtotal'] as num?)?.toDouble() ?? 0.0;
+        } else {
+          // Calculate from dish items if not saved
+          final dishItems = orderData['dishItems'] as List<dynamic>? ?? [];
+          for (var item in dishItems) {
+            final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+            final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+            foodSubtotal += (price * quantity);
+          }
+          debugPrint('📊 [Cook] Calculated foodSubtotal from dish items: ₹$foodSubtotal');
+        }
         
         if (riderEarning > 0) {
           debugPrint('💵 [Delivery] Adding ₹$riderEarning to rider wallet');
@@ -301,6 +318,25 @@ class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
           );
           
           debugPrint('✅ [Delivery] Rider earnings updated successfully');
+        }
+        
+        // 🍳 PAY THE COOK! (Food earnings only, not delivery charge)
+        if (cookId != null && foodSubtotal > 0) {
+          debugPrint('💵 [Cook] Adding ₹$foodSubtotal to cook wallet');
+          
+          final cookWalletService = CookWalletService();
+          await cookWalletService.creditWallet(
+            cookId: cookId,
+            amount: foodSubtotal,
+            orderId: widget.orderId,
+            description: 'Order earnings - Order #${widget.orderId.substring(0, 8)}',
+          );
+          
+          debugPrint('✅ [Cook] Cook earned ₹${foodSubtotal.toStringAsFixed(2)}');
+        } else if (cookId == null) {
+          debugPrint('⚠️ [Cook] No cookId found in order, skipping payment');
+        } else if (foodSubtotal == 0) {
+          debugPrint('⚠️ [Cook] foodSubtotal is 0, skipping payment');
         }
       }
       
@@ -317,14 +353,14 @@ class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
         );
       }
       
-      // E. AUTO NAVIGATION TO HOME (clear navigation stack)
-      debugPrint('🏠 [Delivery] Navigating to rider home');
+      // E. AUTO NAVIGATION TO EARNINGS PAGE (show updated money)
+      debugPrint('💰 [Delivery] Navigating to rider earnings');
       await Future.delayed(const Duration(milliseconds: 500)); // Let snackbar show
       
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(
           context,
-          AppRouter.riderHome,
+          AppRouter.riderEarnings,
           (route) => false, // Remove all previous routes
         );
       }
@@ -341,10 +377,10 @@ class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
           ),
         );
         
-        // Still navigate home even if earnings update fails
+        // Still navigate to earnings even if update fails
         Navigator.pushNamedAndRemoveUntil(
           context,
-          AppRouter.riderHome,
+          AppRouter.riderEarnings,
           (route) => false,
         );
       }

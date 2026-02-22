@@ -12,7 +12,7 @@ class RiderLocationService {
   
   static const String COLLECTION = 'rider_locations';
   static const int UPDATE_INTERVAL_SECONDS = 5; // 5 seconds
-  static const double MIN_DISTANCE_METERS = 10; // Only update if moved 10+ meters
+  static const double MIN_DISTANCE_METERS = 2; // 🧪 TESTING: 2 meters (change to 10 for production)
   static const double MAX_SPEED_KMH = 120; // Max realistic speed (km/h)
   static const double MAX_JUMP_METERS = 200; // Max instant location jump
 
@@ -41,7 +41,7 @@ class RiderLocationService {
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 5, // Update every 5 meters
+        distanceFilter: 1, // 🧪 TESTING: Update every 1 meter (change to 10 for production)
         timeLimit: Duration(seconds: UPDATE_INTERVAL_SECONDS),
       ),
     ).listen(

@@ -12,7 +12,20 @@
           "package_name": "com.example.home_harvest_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "718230008456-2u6lkvfaakb6gphqqfr7h3etbr7l6vjm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.home_harvest_app",
+            "certificate_hash": "d5118241d7666c9a88d41a66774d17156c69b93e"
+          }
+        },
+        {
+          "client_id": "718230008456-a3e7io813tdt6mqqdg4sdbcpr2ndrgim.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB_Pd9ovEli618ymS6fZjoO9nUniQ1YptU"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "718230008456-a3e7io813tdt6mqqdg4sdbcpr2ndrgim.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "718230008456-6rf89hs6lt0m8pmlp1jsvivgamfv54s7.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.homeHarvestApp"
+              }
+            }
+          ]
         }
       }
     }

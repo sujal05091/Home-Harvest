@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../models/dish_model.dart';
 import '../../providers/dishes_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../theme.dart';
 import 'add_dish.dart';
 
@@ -29,9 +30,18 @@ class _CookDishesScreenState extends State<CookDishesScreen> {
   @override
   Widget build(BuildContext context) {
     final dishesProvider = Provider.of<DishesProvider>(context);
-    final myDishes = dishesProvider.dishes; // Should filter by cook ID in real app
+    final authProvider = Provider.of<AuthProvider>(context);
+    final cookId = authProvider.currentUser?.uid ?? '';
+    
+    // Filter dishes by current cook ID
+    final myDishes = dishesProvider.dishes
+        .where((dish) => dish.cookId == cookId)
+        .toList();
 
-    List<DishModel> filteredDishes = myDishes; // Filter by category when category field is added to model
+    // Further filter by category if selected
+    List<DishModel> filteredDishes = _selectedCategory == 'All'
+        ? myDishes
+        : myDishes.where((dish) => (dish.categories ?? []).contains(_selectedCategory.toLowerCase())).toList();
 
     return Scaffold(
       body: CustomScrollView(
@@ -507,27 +517,64 @@ class _CookDishesScreenState extends State<CookDishesScreen> {
     );
   }
 
-  void _toggleAvailability(DishModel dish) {
-    // TODO: Implement actual availability toggle
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          dish.isAvailable
-              ? '${dish.title} marked as unavailable'
-              : '${dish.title} marked as available',
-        ),
-        backgroundColor: AppTheme.successGreen,
-      ),
+  void _toggleAvailability(DishModel dish) async {
+    final dishesProvider = Provider.of<DishesProvider>(context, listen: false);
+    
+    // Create updated dish with toggled availability
+    final updatedDish = DishModel(
+      dishId: dish.dishId,
+      cookId: dish.cookId,
+      cookName: dish.cookName,
+      title: dish.title,
+      description: dish.description,
+      ingredients: dish.ingredients,
+      allergens: dish.allergens,
+      categories: dish.categories,
+      price: dish.price,
+      imageUrl: dish.imageUrl,
+      availableSlots: dish.availableSlots,
+      isAvailable: !dish.isAvailable, // Toggle availability
+      location: dish.location,
+      address: dish.address,
+      createdAt: dish.createdAt,
+      updatedAt: DateTime.now(),
     );
+    
+    // Update in Firestore
+    bool success = await dishesProvider.updateDish(updatedDish);
+    
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            updatedDish.isAvailable
+                ? '✅ ${dish.title} marked as available'
+                : '⚠️ ${dish.title} marked as unavailable',
+          ),
+          backgroundColor: updatedDish.isAvailable ? AppTheme.successGreen : Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Failed to update dish availability'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _editDish(DishModel dish) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const AddDishScreen(), // Pass dish for editing
+        builder: (_) => AddDishScreen(dishToEdit: dish), // Pass dish for editing
       ),
-    );
+    ).then((_) {
+      // Refresh dishes after returning from edit screen
+      Provider.of<DishesProvider>(context, listen: false).loadDishes();
+    });
   }
 
   void _deleteDish(DishModel dish) {
@@ -539,7 +586,7 @@ class _CookDishesScreenState extends State<CookDishesScreen> {
           style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
         content: Text(
-          'Are you sure you want to delete "${dish.title}"?',
+          'Are you sure you want to delete "${dish.title}"? This action cannot be undone.',
           style: GoogleFonts.poppins(),
         ),
         actions: [
@@ -551,15 +598,39 @@ class _CookDishesScreenState extends State<CookDishesScreen> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              // TODO: Implement actual delete
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${dish.title} deleted'),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              
+              final dishesProvider = Provider.of<DishesProvider>(context, listen: false);
+              
+              // Show loading indicator
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Deleting ${dish.title}...'),
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
+              }
+              
+              // Delete from Firestore
+              bool success = await dishesProvider.deleteDish(dish.dishId);
+              
+              if (success && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('✅ ${dish.title} deleted successfully'),
+                    backgroundColor: AppTheme.successGreen,
+                  ),
+                );
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('❌ Failed to delete dish'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,

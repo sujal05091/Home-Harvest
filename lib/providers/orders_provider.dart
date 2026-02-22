@@ -141,6 +141,7 @@ class OrdersProvider with ChangeNotifier {
           acceptedAt: newStatus == OrderStatus.ACCEPTED ? DateTime.now() : _orders[index].acceptedAt,
           pickedUpAt: newStatus == OrderStatus.PICKED_UP ? DateTime.now() : _orders[index].pickedUpAt,
           deliveredAt: newStatus == OrderStatus.DELIVERED ? DateTime.now() : _orders[index].deliveredAt,
+          isActive: newStatus == OrderStatus.READY ? true : _orders[index].isActive, // ✅ SET ACTIVE WHEN READY
         );
 
         await _firestoreService.updateOrder(updatedOrder);

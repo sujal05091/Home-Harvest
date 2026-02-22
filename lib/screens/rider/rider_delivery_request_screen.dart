@@ -9,10 +9,11 @@ import '../../services/rider_location_service.dart';
 import '../../widgets/osm_map_widget.dart';
 import '../../app_router.dart';
 
-/// Rider Delivery Request Screen
-/// Shown when order.status == RIDER_ASSIGNED
-/// Rider can accept or reject the delivery request
-/// On accept: Update status to RIDER_ACCEPTED and start GPS tracking
+/// Rider Tiffin Delivery Request Screen
+/// Specifically for tiffin service orders (isHomeToOffice = true)
+/// Shown when order.status == RIDER_ASSIGNED or READY
+/// Rider can accept or reject the tiffin delivery request
+/// On accept: Update status to RIDER_ACCEPTED and start GPS tracking for home-to-office delivery
 class RiderDeliveryRequestScreen extends StatefulWidget {
   final String orderId;
 
@@ -74,6 +75,34 @@ class _RiderDeliveryRequestScreenState
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) throw 'Not authenticated';
+      
+      // ✅ CHECK: Verify order is still available (not already accepted)
+      final orderDoc = await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.orderId)
+          .get();
+      
+      if (!orderDoc.exists) {
+        throw 'Order not found';
+      }
+      
+      final currentOrderData = orderDoc.data()!;
+      final currentStatus = currentOrderData['status'];
+      final assignedRider = currentOrderData['assignedRiderId'];
+      
+      // Check if another rider has already accepted this order
+      if (currentStatus == OrderStatus.RIDER_ACCEPTED.name && 
+          assignedRider != null && 
+          assignedRider != currentUser.uid) {
+        throw 'This order has already been accepted by another rider';
+      }
+      
+      // Check if order is in correct status to be accepted
+      if (currentStatus != OrderStatus.READY.name && 
+          currentStatus != OrderStatus.RIDER_ASSIGNED.name &&
+          currentStatus != OrderStatus.PLACED.name) {
+        throw 'Order is not available for acceptance (Status: $currentStatus)';
+      }
       
       // Get rider details from users collection
       final riderDoc = await FirebaseFirestore.instance
