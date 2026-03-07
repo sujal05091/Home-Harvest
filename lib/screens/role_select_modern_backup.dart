@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:lottie/lottie.dart';
 import '../app_router.dart';
 
 class RoleSelectScreen extends StatefulWidget {
@@ -42,7 +42,7 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
                 ).createShader(bounds),
                 child: Text(
                   "HomeHarvest",
-                  style: GoogleFonts.pacifico(
+                  style: GoogleFonts.poppins(
                     fontSize: 42,
                     fontWeight: FontWeight.w400,
                     color: Colors.white,

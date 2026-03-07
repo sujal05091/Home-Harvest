@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -19,7 +19,7 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Today', 'This Week', 'This Month'];
 
-  // 📊 Fetch real completed deliveries from Firestore
+  // ?? Fetch real completed deliveries from Firestore
   Stream<List<Map<String, dynamic>>> _getDeliveryHistory(String riderId) {
     return FirebaseFirestore.instance
         .collection('orders')
@@ -35,7 +35,7 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
           'pickupAddress': data['pickupAddress'] ?? 'Unknown',
           'dropAddress': data['dropAddress'] ?? 'Unknown',
           'distance': (data['distance'] as num?)?.toDouble() ?? 0.0,
-          'earnings': (data['riderEarning'] as num?)?.toDouble() ?? 0.0, // 💰 Real rider earning
+          'earnings': (data['riderEarning'] as num?)?.toDouble() ?? 0.0, // ?? Real rider earning
           'customerName': data['customerName'] ?? 'Customer',
           'customerPhone': data['customerPhone'] ?? '',
           'status': 'Completed',
@@ -100,7 +100,7 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
           final allDeliveries = snapshot.data ?? [];
           final filteredDeliveries = _filterDeliveries(allDeliveries);
           
-          // 💰 Calculate totals from REAL earnings
+          // ?? Calculate totals from REAL earnings
           final totalEarnings = filteredDeliveries.fold<double>(
             0, (sum, d) => sum + (d['earnings'] as num).toDouble()
           );
@@ -364,7 +364,7 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '$timeStr · $dateStr',
+                                '$timeStr � $dateStr',
                                 style: GoogleFonts.poppins(
                                   fontSize: 11,
                                   color: Colors.grey[500],
@@ -533,7 +533,7 @@ class _RiderHistoryScreenState extends State<RiderHistoryScreen> {
               // Order Info
               _buildDetailRow('Order ID', delivery['id']),
               _buildDetailRow('Customer', delivery['customerName']),
-              _buildDetailRow('Date & Time', DateFormat('MMM dd, yyyy · hh:mm a').format(delivery['date'])),
+              _buildDetailRow('Date & Time', DateFormat('MMM dd, yyyy � hh:mm a').format(delivery['date'])),
               _buildDetailRow('Distance', '${delivery['distance']} km'),
               _buildDetailRow('Duration', '${delivery['duration']} mins'),
               _buildDetailRow('Status', delivery['status']),

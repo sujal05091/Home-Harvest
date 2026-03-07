@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import 'package:lottie/lottie.dart';
@@ -109,7 +109,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             // Title
             Text(
               'Verification Successful',
-              style: GoogleFonts.inter(
+              style: GoogleFonts.poppins(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
                 color: AppTheme.textPrimary,
@@ -122,7 +122,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             Text(
               'Your account has been verified successfully',
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
+              style: GoogleFonts.poppins(
                 fontSize: 14,
                 color: AppTheme.textSecondary,
               ),
@@ -170,7 +170,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 ),
                 child: Text(
                   'Continue',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -215,7 +215,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   ),
                   Text(
                     'Verification',
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.poppins(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textPrimary,
@@ -243,7 +243,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               Text(
                 'Verification Code',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
+                style: GoogleFonts.poppins(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.textPrimary,
@@ -256,7 +256,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               Text(
                 'We have sent a verification code to your email / phone',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
+                style: GoogleFonts.poppins(
                   fontSize: 14,
                   color: AppTheme.textSecondary,
                   height: 1.5,
@@ -269,7 +269,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               Text(
                 _displayContact,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
+                style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textPrimary,
@@ -303,7 +303,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 animationDuration: const Duration(milliseconds: 300),
                 enableActiveFill: true,
                 keyboardType: TextInputType.number,
-                textStyle: GoogleFonts.inter(
+                textStyle: GoogleFonts.poppins(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.textPrimary,
@@ -345,7 +345,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                         )
                       : Text(
                           'Verify',
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -365,14 +365,14 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     children: [
                       Text(
                         'Didn\'t receive the code? ',
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.poppins(
                           fontSize: 14,
                           color: AppTheme.textSecondary,
                         ),
                       ),
                       Text(
                         'Resend',
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.poppins(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.primaryOrange,

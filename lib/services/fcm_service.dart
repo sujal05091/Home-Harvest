@@ -289,6 +289,62 @@ class FCMService {
     }
   }
 
+  /// Notify a HOME MARKET seller when a customer places a product order.
+  /// Uses type 'NEW_PRODUCT_ORDER' so it stays separate from cook notifications.
+  Future<void> notifySeller({
+    required String sellerId,
+    required String orderId,
+    required String customerName,
+    required String productNames,
+    required double totalAmount,
+  }) async {
+    try {
+      print('🔍 [notifySeller] Starting for seller: $sellerId, order: $orderId');
+
+      final sellerDoc =
+          await _firestore.collection('users').doc(sellerId).get();
+      if (!sellerDoc.exists) {
+        print('❌ [notifySeller] Seller document not found: $sellerId');
+        return;
+      }
+
+      final fcmToken = sellerDoc.data()?['fcmToken'];
+      if (fcmToken == null) {
+        print('⚠️ [notifySeller] No FCM token for $sellerId (in-app popup still works)');
+      } else {
+        print('✅ [notifySeller] Seller FCM token found');
+      }
+
+      final notificationData = {
+        'recipientId': sellerId,
+        'orderId': orderId,
+        'type': 'NEW_PRODUCT_ORDER',
+        'title': '🛍️ New Product Order!',
+        'body': '$customerName ordered $productNames for ₹${totalAmount.toStringAsFixed(0)}',
+        'data': {
+          'orderId': orderId,
+          'type': 'NEW_PRODUCT_ORDER',
+          'customerName': customerName,
+          'dishNames': productNames,
+          'totalAmount': totalAmount,
+        },
+        'read': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      final docRef =
+          await _firestore.collection('notifications').add(notificationData);
+
+      print('✅ [notifySeller] Notification created: ${docRef.id}');
+      print('   Recipient: $sellerId | Order: $orderId');
+    } catch (e) {
+      print('❌ [notifySeller] ERROR: $e');
+      if (e.toString().contains('PERMISSION_DENIED')) {
+        print('🚨 PERMISSION DENIED - Check Firestore rules for notifications collection');
+      }
+    }
+  }
+
   /// Send notification to specific rider
   Future<void> notifyRider({
     required String riderId,

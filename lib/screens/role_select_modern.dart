@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:lottie/lottie.dart';
 import '../app_router.dart';
 
 class RoleSelectScreen extends StatefulWidget {
@@ -121,6 +121,26 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
                     context,
                     AppRouter.login,
                     arguments: {'role': 'cook'},
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              RoleCardWithFeatures(
+                title: "Home Product Seller",
+                subtitle: "Sell your homemade products",
+                icon: Icons.storefront_outlined,
+                iconColor: const Color(0xFF8BC34A),
+                features: const [
+                  "Pickles, masalas & more",
+                  "Sell from home",
+                  "Grow your brand",
+                ],
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    AppRouter.login,
+                    arguments: {'role': 'seller'},
                   );
                 },
               ),

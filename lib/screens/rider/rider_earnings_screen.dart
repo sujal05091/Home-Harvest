@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -6,9 +6,9 @@ import '../../theme.dart';
 import '../../providers/rider_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/delivery_model.dart';
-import '../../services/wallet_service.dart'; // 💰 REAL WALLET BALANCE
+import '../../services/wallet_service.dart'; // ?? REAL WALLET BALANCE
 import '../../models/rider_wallet_model.dart';
-import '../../app_router.dart'; // 🚀 ROUTER
+import '../../app_router.dart'; // ?? ROUTER
 
 class RiderEarningsScreen extends StatefulWidget {
   const RiderEarningsScreen({super.key});
@@ -48,7 +48,7 @@ class _RiderEarningsScreenState extends State<RiderEarningsScreen> {
 
     final weekEarnings = _calculateWeekEarnings(completedDeliveries);
 
-    // 💰 Use StreamBuilder to show REAL wallet balance from Firestore
+    // ?? Use StreamBuilder to show REAL wallet balance from Firestore
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: StreamBuilder<RiderWalletModel?>(
@@ -89,7 +89,7 @@ class _RiderEarningsScreenState extends State<RiderEarningsScreen> {
     );
   }
 
-  // 🎨 Modern App Bar with Large Balance Display
+  // ?? Modern App Bar with Large Balance Display
   Widget _buildModernAppBar(user, double balance) {
     return SliverAppBar(
       expandedHeight: 280,
@@ -190,7 +190,7 @@ class _RiderEarningsScreenState extends State<RiderEarningsScreen> {
     );
   }
 
-  // 💳 Earnings Stats Cards
+  // ?? Earnings Stats Cards
   Widget _buildEarningsCards(double todayEarnings, double weekEarnings, double totalEarnings) {
     return Row(
       children: [
@@ -425,7 +425,7 @@ class _RiderEarningsScreenState extends State<RiderEarningsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 💰 Current Wallet Balance (withdrawable)
+          // ?? Current Wallet Balance (withdrawable)
           Text(
             'Available Balance',
             style: GoogleFonts.poppins(
@@ -767,7 +767,7 @@ class _RiderEarningsScreenState extends State<RiderEarningsScreen> {
                 child: Row(
                   children: [
                     Text(
-                      '₹700',
+                      '?700',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,

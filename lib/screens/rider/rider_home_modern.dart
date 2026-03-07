@@ -1,8 +1,8 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
@@ -33,7 +33,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen> {
       // Load rider's assigned deliveries
       riderProvider.loadRiderDeliveries(authProvider.currentUser!.uid);
       
-      // 🆕 Load available unassigned orders
+      // ?? Load available unassigned orders
       riderProvider.loadAvailableOrders();
     });
   }
@@ -50,11 +50,11 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen> {
 
     // Get active deliveries (rider accepted)
     final activeDeliveries = riderProvider.activeDeliveries;
-    print('🚀 [RiderHome] activeDeliveries count: ${activeDeliveries.length}');
+    print('?? [RiderHome] activeDeliveries count: ${activeDeliveries.length}');
 
-    // 🆕 Get unassigned orders available for this rider to accept
+    // ?? Get unassigned orders available for this rider to accept
     final newRequests = riderProvider.availableOrders;
-    print('🎯 [RiderHome] newRequests count: ${newRequests.length}');
+    print('?? [RiderHome] newRequests count: ${newRequests.length}');
     if (newRequests.isNotEmpty) {
       print('   First request: ${newRequests.first.orderId} - ${newRequests.first.customerName}');
     }
@@ -63,7 +63,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen> {
     final activeInProgress = activeDeliveries
         .where((delivery) => delivery.status != DeliveryStatus.DELIVERED)
         .toList();
-    print('📦 [RiderHome] activeInProgress count: ${activeInProgress.length}');
+    print('?? [RiderHome] activeInProgress count: ${activeInProgress.length}');
 
     // Get delivered deliveries for history
     final deliveredDeliveries = activeDeliveries
@@ -856,16 +856,16 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen> {
                       // Get rider's current location
                       GeoPoint? initialLocation;
                       try {
-                        print('📍 [Rider] Getting initial location...');
+                        print('?? [Rider] Getting initial location...');
                         
                         // Check permissions first
                         LocationPermission permission = await Geolocator.checkPermission();
-                        print('📱 [Rider] Current permission: $permission');
+                        print('?? [Rider] Current permission: $permission');
                         
                         if (permission == LocationPermission.denied || 
                             permission == LocationPermission.deniedForever) {
                           permission = await Geolocator.requestPermission();
-                          print('📱 [Rider] Requested permission: $permission');
+                          print('?? [Rider] Requested permission: $permission');
                         }
                         
                         if (permission == LocationPermission.whileInUse || 
@@ -878,22 +878,22 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen> {
                           ).timeout(
                             Duration(seconds: 10),
                             onTimeout: () {
-                              print('⏱️ [Rider] Location timeout');
+                              print('?? [Rider] Location timeout');
                               throw TimeoutException('Location fetch timeout');
                             },
                           );
                           initialLocation = GeoPoint(position.latitude, position.longitude);
-                          print('✅ [Rider] Initial location: ${position.latitude}, ${position.longitude}');
+                          print('? [Rider] Initial location: ${position.latitude}, ${position.longitude}');
                         } else {
-                          print('❌ [Rider] Location permission denied: $permission');
+                          print('? [Rider] Location permission denied: $permission');
                         }
                       } catch (e, stackTrace) {
-                        print('❌ [Rider] Could not get initial location: $e');
+                        print('? [Rider] Could not get initial location: $e');
                         print('Stack trace: $stackTrace');
                       }
 
                       // Create delivery document
-                      print('📦 [Rider] Creating delivery document with location: $initialLocation');
+                      print('?? [Rider] Creating delivery document with location: $initialLocation');
                       await FirebaseFirestore.instance
                           .collection('deliveries')
                           .doc(order.orderId)
@@ -1116,7 +1116,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen> {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Pickup → Delivery',
+                    'Pickup ? Delivery',
                     style: GoogleFonts.poppins(
                       fontSize: 13,
                       color: AppTheme.textSecondary,

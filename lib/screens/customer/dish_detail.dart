@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../models/order_model.dart';
 import '../../providers/dishes_provider.dart';
 import '../../providers/orders_provider.dart';
 import '../../providers/favorites_provider.dart';
@@ -18,6 +19,19 @@ class DishDetailScreen extends StatefulWidget {
 class _DishDetailScreenState extends State<DishDetailScreen> {
   int _quantity = 1;
   bool _showFullDescription = false;
+
+  // ─── Customization state ───────────────────────────────────────────────────
+  String _sugar = 'Normal';
+  String _spice = 'Normal';
+  String _salt = 'Normal';
+  String _oil = 'Normal';
+  final TextEditingController _notesController = TextEditingController();
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -60,148 +74,71 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
           body: Stack(
             children: [
               // ═══════════════════════════════════════════════════════════
-              // 📸 MAIN CONTENT
+              // 📸 FULL-PAGE SCROLLABLE CONTENT (image scrolls too)
               // ═══════════════════════════════════════════════════════════
-              Column(
-                children: [
+              CustomScrollView(
+                slivers: [
                   // ───────────────────────────────────────
-                  // 1️⃣ PREMIUM IMAGE HEADER
+                  // 1️⃣ COLLAPSIBLE IMAGE HEADER
                   // ───────────────────────────────────────
-                  Stack(
-                    children: [
-                      // Image with gradient overlay
-                      ClipRRect(
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(40),
-                          bottomRight: Radius.circular(40),
-                        ),
-                        child: Container(
-                          height: 350,
-                          width: double.infinity,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              CachedNetworkImage(
-                                imageUrl: dish.imageUrl,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => Container(
-                                  color: Colors.grey[200],
-                                  child: const Center(
-                                    child: CircularProgressIndicator(
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                          Color(0xFFFC8019)),
-                                    ),
-                                  ),
-                                ),
-                                errorWidget: (context, url, error) => Container(
-                                  color: Colors.grey[200],
-                                  child: const Icon(
-                                    Icons.restaurant,
-                                    size: 100,
-                                    color: Colors.grey,
-                                  ),
+                  SliverAppBar(
+                    expandedHeight: 350,
+                    pinned: false,
+                    floating: false,
+                    automaticallyImplyLeading: false,
+                    backgroundColor: Colors.transparent,
+                    flexibleSpace: FlexibleSpaceBar(
+                      background: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CachedNetworkImage(
+                            imageUrl: dish.imageUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              color: Colors.grey[200],
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Color(0xFFFC8019)),
                                 ),
                               ),
-                              // Subtle gradient overlay
-                              Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.black.withOpacity(0.5),
-                                      Colors.black.withOpacity(0.15),
-                                    ],
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                  ),
-                                ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.grey[200],
+                              child: const Icon(
+                                Icons.restaurant,
+                                size: 100,
+                                color: Colors.grey,
                               ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-
-                      // ───────────────────────────────────────
-                      // 2️⃣ FLOATING HEADER CONTROLS
-                      // ───────────────────────────────────────
-                      SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              // Back button
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.1),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: IconButton(
-                                  icon: const Icon(Icons.arrow_back),
-                                  onPressed: () => Navigator.pop(context),
-                                  color: Colors.black87,
-                                ),
+                          // Gradient overlay
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.black.withOpacity(0.5),
+                                  Colors.black.withOpacity(0.15),
+                                ],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
                               ),
-
-                              // Favorite button - Wrapped in Consumer
-                              Consumer<FavoritesProvider>(
-                                builder: (context, favProvider, _) {
-                                  final isFav = favProvider.isDishFavorite(dish.dishId);
-                                  print('🔄 Heart button rebuilt - isFav: $isFav for ${dish.dishId}');
-                                  return Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.1),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: IconButton(
-                                      icon: Icon(
-                                        isFav
-                                            ? Icons.favorite
-                                            : Icons.favorite_border,
-                                        color: isFav
-                                            ? Colors.red
-                                            : Colors.black87,
-                                      ),
-                                      onPressed: () {
-                                        print('❤️ Heart clicked for: ${dish.dishId}');
-                                        favProvider.toggleDishFavorite(dish.dishId);
-                                      },
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
 
                   // ───────────────────────────────────────
-                  // 📝 SCROLLABLE CONTENT
+                  // 📝 ALL SCROLLABLE CONTENT
                   // ───────────────────────────────────────
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                             // ───────────────────────────────────────
                             // 3️⃣ FOOD TITLE SECTION
                             // ───────────────────────────────────────
@@ -467,13 +404,85 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                               ],
                             ),
 
-                            const SizedBox(height: 100),
+                            const SizedBox(height: 24),
+
+                            // ───────────────────────────────────────
+                            // 7️⃣ CUSTOMIZE YOUR MEAL
+                            // ───────────────────────────────────────
+                            _buildCustomizationSection(),
                           ],
                         ),
                       ),
                     ),
-                  ),
                 ],
+              ),
+
+              // ───────────────────────────────────────
+              // 2️⃣ FLOATING BACK + FAVOURITE BUTTONS
+              // ───────────────────────────────────────
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.arrow_back),
+                            onPressed: () => Navigator.pop(context),
+                            color: Colors.black87,
+                          ),
+                        ),
+                        Consumer<FavoritesProvider>(
+                          builder: (context, favProvider, _) {
+                            final isFav =
+                                favProvider.isDishFavorite(dish.dishId);
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: IconButton(
+                                icon: Icon(
+                                  isFav
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
+                                  color:
+                                      isFav ? Colors.red : Colors.black87,
+                                ),
+                                onPressed: () => favProvider
+                                    .toggleDishFavorite(dish.dishId),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
 
               // ═══════════════════════════════════════════════════════════
@@ -550,9 +559,20 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                             padding: const EdgeInsets.only(left: 16),
                             child: ElevatedButton.icon(
                               onPressed: () {
-                                for (int i = 0; i < _quantity; i++) {
-                                  ordersProvider.addToCart(dish);
-                                }
+                                final customization = FoodCustomization(
+                                  sugar: _sugar,
+                                  spice: _spice,
+                                  salt: _salt,
+                                  oil: _oil,
+                                  notes: _notesController.text.trim().isEmpty
+                                      ? null
+                                      : _notesController.text.trim(),
+                                );
+                                ordersProvider.addToCart(
+                                  dish,
+                                  quantity: _quantity,
+                                  customization: customization,
+                                );
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
@@ -626,6 +646,160 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
             fontSize: 15,
             fontWeight: FontWeight.bold,
           ),
+        ),
+      ],
+    );
+  }
+
+  // ─── CUSTOMIZATION SECTION ────────────────────────────────────────────────
+  Widget _buildCustomizationSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.tune_rounded,
+                  size: 20, color: Color(0xFFFC8019)),
+              const SizedBox(width: 8),
+              const Text(
+                'Customize Your Meal',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Sugar level
+          _buildChipSelector(
+            label: '🍬 Sugar Level',
+            options: const ['No Sugar', 'Less Sugar', 'Normal'],
+            selected: _sugar,
+            onSelected: (v) => setState(() => _sugar = v),
+          ),
+          const SizedBox(height: 12),
+
+          // Spice level
+          _buildChipSelector(
+            label: '🌶️ Spice Level',
+            options: const ['Mild', 'Normal', 'Extra Spicy'],
+            selected: _spice,
+            onSelected: (v) => setState(() => _spice = v),
+          ),
+          const SizedBox(height: 12),
+
+          // Salt level
+          _buildChipSelector(
+            label: '🧂 Salt Level',
+            options: const ['Less Salt', 'Normal'],
+            selected: _salt,
+            onSelected: (v) => setState(() => _salt = v),
+          ),
+          const SizedBox(height: 12),
+
+          // Oil level
+          _buildChipSelector(
+            label: '🫙 Oil Level',
+            options: const ['Low Oil', 'Normal'],
+            selected: _oil,
+            onSelected: (v) => setState(() => _oil = v),
+          ),
+          const SizedBox(height: 14),
+
+          // Special notes
+          TextField(
+            controller: _notesController,
+            maxLines: 2,
+            maxLength: 120,
+            decoration: InputDecoration(
+              hintText: 'Any special instructions? (optional)',
+              hintStyle: TextStyle(fontSize: 13, color: Colors.grey[400]),
+              filled: true,
+              fillColor: Colors.grey[50],
+              counterStyle:
+                  TextStyle(fontSize: 11, color: Colors.grey[400]),
+              enabledBorder: OutlineInputBorder(
+                borderSide:
+                    BorderSide(color: Colors.grey[300]!, width: 1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: const BorderSide(
+                    color: Color(0xFFFC8019), width: 1.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 10),
+            ),
+            style: const TextStyle(fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChipSelector({
+    required String label,
+    required List<String> options,
+    required String selected,
+    required ValueChanged<String> onSelected,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[700]),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          children: options.map((option) {
+            final isSelected = selected == option;
+            return GestureDetector(
+              onTap: () => onSelected(option),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFFFC8019)
+                      : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFFFC8019)
+                        : Colors.grey[300]!,
+                  ),
+                ),
+                child: Text(
+                  option,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color:
+                        isSelected ? Colors.white : Colors.grey[700],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );

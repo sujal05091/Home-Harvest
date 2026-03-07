@@ -182,6 +182,24 @@ class FirestoreService {
         });
   }
 
+  /// Returns DELIVERED + CANCELLED orders for a seller/cook (order history).
+  Stream<List<OrderModel>> getSellerOrderHistory(String sellerId) {
+    return _firestore
+        .collection('orders')
+        .where('cookId', isEqualTo: sellerId)
+        .snapshots()
+        .map((snapshot) {
+          final orders = snapshot.docs
+              .map((doc) => OrderModel.fromMap(doc.data(), doc.id))
+              .where((order) =>
+                  order.status == OrderStatus.DELIVERED ||
+                  order.status == OrderStatus.CANCELLED)
+              .toList();
+          orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return orders;
+        });
+  }
+
   Stream<OrderModel?> getOrderById(String orderId) {
     return _firestore.collection('orders').doc(orderId).snapshots().map((doc) {
       if (doc.exists) {
@@ -259,6 +277,64 @@ class FirestoreService {
       'verificationStatus': status,
       'verified': status == 'APPROVED', // Set verified=true only if APPROVED
       'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🫙 PRODUCT SELLER VERIFICATION
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Future<String> submitProductVerification(
+      ProductVerificationModel verification) async {
+    final ref = await _firestore
+        .collection('product_verifications')
+        .add(verification.toMap());
+
+    await _firestore.collection('users').doc(verification.sellerId).update({
+      'productVerificationStatus': 'PENDING',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    return ref.id;
+  }
+
+  /// ✅ Admin updates product verification status and syncs to user document
+  Future<void> updateProductVerificationStatus({
+    required String verificationId,
+    required String sellerId,
+    required String status, // "APPROVED", "REJECTED"
+    String? adminNotes,
+    String? rejectionReason,
+  }) async {
+    await _firestore
+        .collection('product_verifications')
+        .doc(verificationId)
+        .update({
+      'status': status,
+      if (adminNotes != null) 'adminNotes': adminNotes,
+      if (rejectionReason != null) 'rejectionReason': rejectionReason,
+      'reviewedAt': FieldValue.serverTimestamp(),
+    });
+
+    // ✅ Sync to user doc so offline reads also work
+    await _firestore.collection('users').doc(sellerId).update({
+      'productVerificationStatus': status,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Stream<ProductVerificationModel?> getProductVerification(String sellerId) {
+    return _firestore
+        .collection('product_verifications')
+        .where('sellerId', isEqualTo: sellerId)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isEmpty) return null;
+      final list = snapshot.docs
+          .map((d) => ProductVerificationModel.fromMap(d.data(), d.id))
+          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list.first;
     });
   }
 

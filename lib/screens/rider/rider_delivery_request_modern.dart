@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../models/order_model.dart';
 import '../../models/delivery_model.dart';
@@ -12,7 +12,7 @@ import '../../services/firestore_service.dart';
 import '../../widgets/osm_map_widget.dart';
 import '../../app_router.dart';
 
-/// 🌟 Modern Full-Screen Delivery Request Page
+/// ?? Modern Full-Screen Delivery Request Page
 /// Swipeable, immersive design with animations
 class RiderDeliveryRequestModernScreen extends StatefulWidget {
   final String orderId;
@@ -108,7 +108,7 @@ class _RiderDeliveryRequestModernScreenState
     });
   }
 
-  /// 🔒 PRODUCTION-SAFE: Accept delivery with Firestore transaction
+  /// ?? PRODUCTION-SAFE: Accept delivery with Firestore transaction
   /// Prevents multiple riders from accepting the same order
   Future<void> _acceptDelivery(OrderModel order) async {
     setState(() {
@@ -132,7 +132,7 @@ class _RiderDeliveryRequestModernScreenState
       final riderName = riderData['name'] ?? 'Unknown';
       final riderPhone = riderData['phone'] ?? '';
 
-      // 🔒 Use transaction to prevent race conditions
+      // ?? Use transaction to prevent race conditions
       final firestoreService = FirestoreService();
       final success = await firestoreService.acceptOrderAsRider(
         orderId: widget.orderId,
@@ -146,7 +146,7 @@ class _RiderDeliveryRequestModernScreenState
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('⚠️ Order already taken by another rider'),
+              content: Text('?? Order already taken by another rider'),
               backgroundColor: Colors.orange,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -157,7 +157,7 @@ class _RiderDeliveryRequestModernScreenState
         return;
       }
 
-      // ✅ Order successfully accepted, set up tracking and delivery
+      // ? Order successfully accepted, set up tracking and delivery
       
       // Get rider's current location immediately
       GeoPoint? currentLocation;
@@ -166,9 +166,9 @@ class _RiderDeliveryRequestModernScreenState
           desiredAccuracy: LocationAccuracy.high,
         );
         currentLocation = GeoPoint(position.latitude, position.longitude);
-        print('📍 [Accept] Got rider location: ${position.latitude}, ${position.longitude}');
+        print('?? [Accept] Got rider location: ${position.latitude}, ${position.longitude}');
       } catch (e) {
-        print('⚠️ [Accept] Could not get rider location: $e');
+        print('?? [Accept] Could not get rider location: $e');
         currentLocation = GeoPoint(0, 0);
       }
       
@@ -234,10 +234,10 @@ class _RiderDeliveryRequestModernScreenState
         onLocationUpdate: (location) {},
       );
 
-      print('🚀 [Rider] Order accepted successfully, navigating to active delivery screen');
+      print('?? [Rider] Order accepted successfully, navigating to active delivery screen');
 
       if (mounted) {
-        // 🚀 Navigate to active delivery screen
+        // ?? Navigate to active delivery screen
         Navigator.pushReplacementNamed(
           context,
           AppRouter.riderActiveDelivery,
@@ -247,7 +247,7 @@ class _RiderDeliveryRequestModernScreenState
         );
       }
     } catch (e) {
-      print('❌ [Rider] Error accepting delivery: $e');
+      print('? [Rider] Error accepting delivery: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

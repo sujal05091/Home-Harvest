@@ -28,6 +28,11 @@ service cloud.firestore {
               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider';
       }
       
+      function isSeller() {
+        return isAuthenticated() && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'seller';
+      }
+      
       function isCustomer() {
         return isAuthenticated() && 
               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer';
@@ -119,6 +124,12 @@ service cloud.firestore {
           // COOK: Can accept/reject orders and update preparation status
           (resource.data.cookId == request.auth.uid && 
           isCook() &&
+          request.resource.data.status in ['ACCEPTED', 'PREPARING', 'READY', 'RIDER_ASSIGNED', 'CANCELLED'] &&
+          isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
+          
+          // SELLER: Same permissions as cook – can accept/reject and manage packing status
+          (resource.data.cookId == request.auth.uid && 
+          isSeller() &&
           request.resource.data.status in ['ACCEPTED', 'PREPARING', 'READY', 'RIDER_ASSIGNED', 'CANCELLED'] &&
           isValidStatusTransition(resource.data.status, request.resource.data.status)) ||
           
@@ -238,6 +249,29 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
       
+      // ═══════════════════════════════════════════════════════════════════════
+      // 💸 SELLER WITHDRAWALS - Seller Withdrawal Requests
+      // ═══════════════════════════════════════════════════════════════════════
+      match /seller_withdrawal_requests/{withdrawalId} {
+        // Read: The requesting seller or admin
+        allow read: if isAuthenticated() && (
+          resource.data.sellerId == request.auth.uid ||
+          isAdmin()
+        );
+
+        // Create: Only sellers can create their own withdrawal requests
+        allow create: if isAuthenticated() &&
+          isSeller() &&
+          request.resource.data.sellerId == request.auth.uid &&
+          request.resource.data.status == 'PENDING';
+
+        // Update: Only admin can approve/reject/pay
+        allow update: if isAdmin();
+
+        // Delete: Only admin
+        allow delete: if isAdmin();
+      }
+
       // Cook Withdrawal Requests
       match /cook_withdrawal_requests/{withdrawalId} {
         // Read: The requesting cook or admin
@@ -487,6 +521,62 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
       
+      // ═════════════════════════════════════════════════════════════════════
+      // 🫙 PRODUCT SELLER VERIFICATIONS
+      // ═════════════════════════════════════════════════════════════════════
+      match /product_verifications/{verificationId} {
+        // Read: The seller who submitted OR admin
+        allow read: if isAuthenticated() && (
+          resource.data.sellerId == request.auth.uid ||
+          isAdmin()
+        );
+
+        // List (collection query): the seller can query their own docs
+        allow list: if isAuthenticated() && (
+          request.query.filters.size() > 0 ||
+          isAdmin()
+        );
+
+        // Create: Any cook or dedicated seller can submit a product verification
+        allow create: if isAuthenticated() &&
+          (isCook() || isSeller()) &&
+          request.resource.data.sellerId == request.auth.uid &&
+          request.resource.data.status == 'PENDING';
+
+        // Update: Only admin can approve / reject
+        allow update: if isAdmin();
+
+        // Delete: Only admin
+        allow delete: if isAdmin();
+      }
+
+      // ═════════════════════════════════════════════════════════════════════
+      // 🛒 HOME PRODUCTS (Homemade Products Marketplace)
+      // ═════════════════════════════════════════════════════════════════════
+      match /home_products/{productId} {
+        // Read: Anyone authenticated can browse products
+        allow read: if isAuthenticated();
+
+        // Create: Only approved cooks or approved sellers can add products.
+        // The seller dashboard UI gates this form behind the product_verifications
+        // stream (APPROVED check). Role + ownership is enforced here.
+        allow create: if isAuthenticated() &&
+          (isCook() || isSeller()) &&
+          request.resource.data.sellerId == request.auth.uid;
+
+        // Update: The seller who owns the product OR admin
+        allow update: if isAuthenticated() && (
+          ((isCook() || isSeller()) && resource.data.sellerId == request.auth.uid) ||
+          isAdmin()
+        );
+
+        // Delete: The seller who owns the product OR admin
+        allow delete: if isAuthenticated() && (
+          ((isCook() || isSeller()) && resource.data.sellerId == request.auth.uid) ||
+          isAdmin()
+        );
+      }
+
       // ===================
       // DEFAULT: Deny all
       // ===================

@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/wallet_service.dart';
@@ -235,7 +235,7 @@ class _RiderWithdrawScreenState extends State<RiderWithdrawScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      'Min: ₹${WalletService.MIN_WITHDRAWAL_AMOUNT.toStringAsFixed(0)} • Max: ₹${WalletService.MAX_WITHDRAWAL_AMOUNT.toStringAsFixed(0)}',
+                                      'Min: ₹${WalletService.MIN_WITHDRAWAL_AMOUNT.toStringAsFixed(0)} � Max: ₹${WalletService.MAX_WITHDRAWAL_AMOUNT.toStringAsFixed(0)}',
                                       style: GoogleFonts.poppins(
                                         fontSize: 12,
                                         color: Colors.blue[600],
@@ -667,7 +667,7 @@ class _RiderWithdrawScreenState extends State<RiderWithdrawScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '${request.bankName} • ${request.accountNumber.replaceRange(4, request.accountNumber.length - 4, '****')}',
+                  '${request.bankName} � ${request.accountNumber.replaceRange(4, request.accountNumber.length - 4, '****')}',
                   style: GoogleFonts.poppins(
                     fontSize: 13,
                     color: Colors.grey[700],

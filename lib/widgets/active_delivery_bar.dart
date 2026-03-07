@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/order_model.dart';
 import '../app_router.dart';
 
-/// 🚚 Active Delivery Summary Bar
+/// ?? Active Delivery Summary Bar
 /// 
 /// Shows at the bottom of screen (above cart bar) when there's an active delivery.
 /// Displays: Order status + "Track Order" action
@@ -162,7 +162,7 @@ class _ActiveDeliveryBarState extends State<ActiveDeliveryBar>
                 ),
                 child: Row(
                   children: [
-                    // 🚚 Delivery Icon
+                    // ?? Delivery Icon
                     Stack(
                       clipBehavior: Clip.none,
                       children: [
@@ -210,7 +210,7 @@ class _ActiveDeliveryBarState extends State<ActiveDeliveryBar>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            '🚀 Delivery in Progress',
+                            '?? Delivery in Progress',
                             style: GoogleFonts.poppins(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,

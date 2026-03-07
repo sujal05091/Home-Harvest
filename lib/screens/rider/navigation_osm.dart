@@ -321,22 +321,36 @@ class _RiderNavigationScreenState extends State<RiderNavigationScreen> {
         }
         
         // 🍳 PAY THE COOK! (Food earnings only, not delivery charge)
-        if (cookId != null && foodSubtotal > 0) {
-          debugPrint('💵 [Cook] Adding ₹$foodSubtotal to cook wallet');
-          
-          final cookWalletService = CookWalletService();
-          await cookWalletService.creditWallet(
-            cookId: cookId,
-            amount: foodSubtotal,
-            orderId: widget.orderId,
-            description: 'Order earnings - Order #${widget.orderId.substring(0, 8)}',
-          );
-          
-          debugPrint('✅ [Cook] Cook earned ₹${foodSubtotal.toStringAsFixed(2)}');
-        } else if (cookId == null) {
-          debugPrint('⚠️ [Cook] No cookId found in order, skipping payment');
-        } else if (foodSubtotal == 0) {
-          debugPrint('⚠️ [Cook] foodSubtotal is 0, skipping payment');
+        debugPrint('💰 [Cook] Starting cook payment process...');
+        debugPrint('   cookId: $cookId');
+        debugPrint('   foodSubtotal: ₹$foodSubtotal');
+        debugPrint('   orderId: ${widget.orderId}');
+        
+        if (cookId == null) {
+          debugPrint('❌ [Cook] ERROR: cookId is NULL! Cannot pay cook.');
+        } else if (foodSubtotal <= 0) {
+          debugPrint('❌ [Cook] ERROR: foodSubtotal is $foodSubtotal! Cannot pay cook.');
+        } else {
+          try {
+            debugPrint('💵 [Cook] Paying cook $cookId: ₹${foodSubtotal.toStringAsFixed(2)}');
+            
+            final cookWalletService = CookWalletService();
+            final transactionId = await cookWalletService.creditWallet(
+              cookId: cookId,
+              amount: foodSubtotal,
+              orderId: widget.orderId,
+              description: 'Order earnings - Order #${widget.orderId.substring(0, 8)}',
+            );
+            
+            if (transactionId != null) {
+              debugPrint('✅ [Cook] Cook earned ₹${foodSubtotal.toStringAsFixed(2)} - Transaction ID: $transactionId');
+            } else {
+              debugPrint('❌ [Cook] ERROR: creditWallet returned null!');
+            }
+          } catch (e, stackTrace) {
+            debugPrint('❌ [Cook] EXCEPTION while paying cook: $e');
+            debugPrint('   Stack trace: $stackTrace');
+          }
         }
       }
       

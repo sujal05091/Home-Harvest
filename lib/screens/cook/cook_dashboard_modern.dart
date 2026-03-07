@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -16,6 +16,7 @@ import '../../app_router.dart';
 import '../../theme.dart';
 import '../../test_cook_notification.dart';
 import '../../services/fcm_service.dart';
+import 'product_verification_status.dart'; // ?? product seller verification
 
 class CookDashboardModernScreen extends StatefulWidget {
   const CookDashboardModernScreen({super.key});
@@ -40,10 +41,10 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
       Provider.of<DishesProvider>(context, listen: false)
           .loadCookDishes(authProvider.currentUser!.uid);
       
-      // 🔔 Save FCM token for push notifications
+      // ?? Save FCM token for push notifications
       FCMService().saveFCMToken();
       
-      // 🔔 Listen for new order notifications
+      // ?? Listen for new order notifications
       _listenForNewOrders(authProvider.currentUser!.uid);
     });
   }
@@ -66,7 +67,7 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
     );
     
     await _localNotifications.initialize(initSettings);
-    print('✅ [Cook] Local notifications initialized');
+    print('? [Cook] Local notifications initialized');
   }
 
   @override
@@ -75,9 +76,9 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
     super.dispose();
   }
 
-  /// 🔔 Listen for new order notifications and show popup
+  /// ?? Listen for new order notifications and show popup
   void _listenForNewOrders(String cookId) {
-    print('🔔 [Cook] Starting notification listener for cook: $cookId');
+    print('?? [Cook] Starting notification listener for cook: $cookId');
     print('   Listening for: recipientId=$cookId, type=NEW_ORDER, read=false');
     
     _notificationSubscription = FirebaseFirestore.instance
@@ -88,10 +89,10 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
         .snapshots()
         .listen(
       (snapshot) {
-        print('📬 [Cook] Notification snapshot received: ${snapshot.docs.length} docs');
+        print('?? [Cook] Notification snapshot received: ${snapshot.docs.length} docs');
         
         if (snapshot.docs.isEmpty) {
-          print('   ℹ️ No unread NEW_ORDER notifications found');
+          print('   ?? No unread NEW_ORDER notifications found');
         }
         
         for (var doc in snapshot.docChanges) {
@@ -99,22 +100,22 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
           
           if (doc.type == DocumentChangeType.added) {
             final data = doc.doc.data() as Map<String, dynamic>;
-            print('🔔 [Cook] New order notification received!');
+            print('?? [Cook] New order notification received!');
             print('   Document ID: ${doc.doc.id}');
             print('   Order ID: ${data['orderId']}');
             print('   Title: ${data['title']}');
             print('   Body: ${data['body']}');
-            print('   🎉 Showing notification and popup...');
+            print('   ?? Showing notification and popup...');
             
-            // 🔔 Show system notification in notification bar (don't wait)
+            // ?? Show system notification in notification bar (don't wait)
             _showSystemNotification(
-              title: data['title'] ?? '🔔 New Order!',
+              title: data['title'] ?? '?? New Order!',
               body: data['body'] ?? 'New order received',
               orderId: data['orderId'] ?? '',
             );
             
-            // 🎉 Show popup dialog IMMEDIATELY (in parallel)
-            print('🎉 Showing popup dialog NOW...');
+            // ?? Show popup dialog IMMEDIATELY (in parallel)
+            print('?? Showing popup dialog NOW...');
             _showNewOrderDialog(
               orderId: data['orderId'] ?? '',
               customerName: data['data']?['customerName'] ?? 'Customer',
@@ -126,22 +127,22 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
         }
       },
       onError: (error) {
-        print('❌ [Cook] Notification listener error: $error');
+        print('? [Cook] Notification listener error: $error');
       },
     );
     
-    print('✅ [Cook] Notification listener set up successfully');
+    print('? [Cook] Notification listener set up successfully');
     print('   Waiting for notifications...');
   }
 
-  /// 🔔 Show system notification in Android notification bar
+  /// ?? Show system notification in Android notification bar
   Future<void> _showSystemNotification({
     required String title,
     required String body,
     required String orderId,
   }) async {
     try {
-      print('📲 [SystemNotification] Showing in notification bar...');
+      print('?? [SystemNotification] Showing in notification bar...');
       print('   Title: $title');
       print('   Body: $body');
       
@@ -180,13 +181,13 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
         platformDetails,
       );
       
-      print('✅ [SystemNotification] Shown successfully with ID: $notificationId');
+      print('? [SystemNotification] Shown successfully with ID: $notificationId');
     } catch (e) {
-      print('❌ [SystemNotification] Error: $e');
+      print('? [SystemNotification] Error: $e');
     }
   }
 
-  /// 🎉 Show new order dialog popup
+  /// ?? Show new order dialog popup
   void _showNewOrderDialog({
     required String orderId,
     required String customerName,
@@ -194,18 +195,18 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
     required double totalAmount,
     required String notificationId,
   }) {
-    print('📱 [Dialog] _showNewOrderDialog called');
+    print('?? [Dialog] _showNewOrderDialog called');
     print('   mounted: $mounted');
     
     if (!mounted) {
-      print('❌ [Dialog] Widget not mounted, cannot show dialog');
+      print('? [Dialog] Widget not mounted, cannot show dialog');
       return;
     }
     
     // Add haptic feedback for extra attention
     HapticFeedback.vibrate();
     
-    print('✅ [Dialog] Showing dialog NOW (no delay)...');
+    print('? [Dialog] Showing dialog NOW (no delay)...');
     
     // Show dialog immediately
     showDialog(
@@ -232,7 +233,7 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '🔔 New Order!',
+                      '?? New Order!',
                       style: GoogleFonts.poppins(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -296,7 +297,7 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
           ],
             ), // Close AlertDialog
           ), // Close WillPopScope
-    ).then((value) => print('✅ [Dialog] Dialog closed'));
+    ).then((value) => print('? [Dialog] Dialog closed'));
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
@@ -401,6 +402,26 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
                 ),
                 _buildNewOrders(newOrders, ordersProvider),
                 _buildManageDishes(dishesProvider),
+                // ?? Homemade Products � show enrollment or management based on services
+                StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .snapshots(),
+                  builder: (context, userSnap) {
+                    final data = userSnap.data?.data() as Map<String, dynamic>?;
+                    final services =
+                        data?['services'] as Map<String, dynamic>? ?? {};
+                    final isProductSeller =
+                        services['homeProductSeller'] == true;
+
+                    if (isProductSeller) {
+                      return _buildManageHomemadeProducts();
+                    } else {
+                      return _buildStartSellingProducts(user.uid);
+                    }
+                  },
+                ),
               ],
             ),
           ),
@@ -860,11 +881,11 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () async {
-                  print('🟡 [Cook] Start Preparing clicked for ${order.orderId}');
+                  print('?? [Cook] Start Preparing clicked for ${order.orderId}');
                   await provider.updateOrderStatus(order.orderId, OrderStatus.PREPARING);
                 },
                 icon: Icon(Icons.restaurant_menu),
-                label: Text('👨‍🍳 Start Preparing', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                label: Text('????? Start Preparing', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
@@ -883,7 +904,7 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
               child: ElevatedButton.icon(
                 onPressed: () => _markFoodReady(order.orderId),
                 icon: Icon(Icons.check_circle),
-                label: Text('✅ Food Ready', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                label: Text('? Food Ready', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
@@ -1015,6 +1036,160 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
     );
   }
 
+  // ?????????????????????????????????????????????????????????????????????
+  // ?? START SELLING HOMEMADE PRODUCTS (not yet enrolled)
+  // ?????????????????????????????????????????????????????????????????????
+
+  Widget _buildStartSellingProducts(String uid) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFF3E0), Color(0xFFFFE0B2)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.07),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Text('??', style: TextStyle(fontSize: 28)),
+              const SizedBox(width: 10),
+              Text(
+                'Sell Homemade Products',
+                style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Text(
+              'Expand your income by selling pickles, masalas, snacks & more. '
+              'Get verified and list products in the Home Harvest Market.',
+              style: GoogleFonts.poppins(
+                  fontSize: 12, color: Colors.grey[700], height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  // Mark user as homeProductSeller and go to product verification
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(uid)
+                      .set({
+                    'services': {'homeProductSeller': true},
+                  }, SetOptions(merge: true));
+                  if (mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const _ProductVerifStatusBridge(),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.verified_user_outlined),
+                label: const Text('Start Selling � Get Verified'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFC8019),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  textStyle: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ?????????????????????????????????????????????????????????????????????
+  // ?? MANAGE HOMEMADE PRODUCTS SECTION
+  // ?????????????????????????????????????????????????????????????????????
+
+  Widget _buildManageHomemadeProducts() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: GestureDetector(
+        onTap: () => Navigator.pushNamed(context, AppRouter.cookProducts),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.07),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Text('??', style: TextStyle(fontSize: 28)),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Homemade Products',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      'Manage your homemade food products',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFC8019),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.arrow_forward_ios,
+                    color: Colors.white, size: 16),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDishCard(dish) {
     return Container(
       decoration: BoxDecoration(
@@ -1119,7 +1294,7 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
   }
 
   Future<void> _markFoodReady(String orderId) async {
-    print('🔴 [Cook] BUTTON CLICKED! Calling _markFoodReady for $orderId');
+    print('?? [Cook] BUTTON CLICKED! Calling _markFoodReady for $orderId');
     
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
@@ -1147,7 +1322,7 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
     );
 
     if (confirmed == true) {
-      print('🟢 [Cook] Confirmation received, updating order status...');
+      print('?? [Cook] Confirmation received, updating order status...');
       
       // Show loading
       if (!mounted) return;
@@ -1168,7 +1343,7 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
         );
 
         if (success) {
-          print('✅ [Cook] Order status updated to READY');
+          print('? [Cook] Order status updated to READY');
           
           // Fetch order document to get location
           final orderDoc = await FirebaseFirestore.instance
@@ -1180,7 +1355,7 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
             final orderData = orderDoc.data()!;
             final pickupLocation = orderData['pickupLocation'] as GeoPoint;
             
-            print('🚀 [Cook] Calling FCMService().notifyNearbyRiders()');
+            print('?? [Cook] Calling FCMService().notifyNearbyRiders()');
             print('   Order ID: $orderId');
             print('   Pickup Lat: ${pickupLocation.latitude}');
             print('   Pickup Lng: ${pickupLocation.longitude}');
@@ -1193,21 +1368,30 @@ class _CookDashboardModernScreenState extends State<CookDashboardModernScreen> {
               radiusKm: 5.0,
             );
 
-            print('✅ [Cook] FCMService completed successfully!');
+            print('? [Cook] FCMService completed successfully!');
           } else {
-            print('❌ [Cook] Order document not found: $orderId');
+            print('? [Cook] Order document not found: $orderId');
           }
         } else {
-          print('❌ [Cook] Failed to update order status');
+          print('? [Cook] Failed to update order status');
         }
       } catch (e) {
-        print('❌ [Cook] Error in _markFoodReady: $e');
+        print('? [Cook] Error in _markFoodReady: $e');
       } finally {
         // Close loading dialog
         if (mounted) Navigator.pop(context);
       }
     } else {
-      print('🟡 [Cook] User cancelled marking food ready');
+      print('?? [Cook] User cancelled marking food ready');
     }
   }
+}
+
+/// Tiny bridge: just pushes ProductVerificationStatusScreen as a named screen.
+/// Used by _buildStartSellingProducts so context.push(...) works correctly.
+class _ProductVerifStatusBridge extends StatelessWidget {
+  const _ProductVerifStatusBridge();
+  @override
+  Widget build(BuildContext context) =>
+      const ProductVerificationStatusScreen();
 }

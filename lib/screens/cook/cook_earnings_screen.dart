@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -416,7 +416,7 @@ class _CookEarningsScreenState extends State<CookEarningsScreen> {
                 child: Row(
                   children: [
                     Text(
-                      '₹1225',
+                      '?1225',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,

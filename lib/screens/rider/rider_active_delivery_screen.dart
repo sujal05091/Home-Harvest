@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -57,19 +57,19 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
 
   Future<void> _startLocationTracking() async {
     try {
-      print('� [Rider] Starting location tracking...');
+      print('? [Rider] Starting location tracking...');
       
       // Check permissions
       LocationPermission permission = await Geolocator.checkPermission();
-      print('📱 [Rider] Current permission: $permission');
+      print('?? [Rider] Current permission: $permission');
       
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        print('📱 [Rider] Requested permission: $permission');
+        print('?? [Rider] Requested permission: $permission');
       }
       
       if (permission == LocationPermission.deniedForever) {
-        print('🚨 [Rider] Location permanently denied! Opening settings...');
+        print('?? [Rider] Location permanently denied! Opening settings...');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -89,7 +89,7 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
 
       if (permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always) {
-        print('✅ [Rider] Location permission granted, starting stream');
+        print('? [Rider] Location permission granted, starting stream');
         
         // Get initial location immediately
         try {
@@ -101,9 +101,9 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
           
           await _updateRiderLocation(initialPosition);
           _lastPosition = initialPosition;
-          print('🎯 [Rider] Set initial location successfully');
+          print('?? [Rider] Set initial location successfully');
         } catch (e) {
-          print('⚠️ [Rider] Could not get initial position: $e');
+          print('?? [Rider] Could not get initial position: $e');
         }
         
         // Start listening to location updates
@@ -114,19 +114,19 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
           ),
         ).listen(
           (Position position) {
-            print('📍 [Rider] Location stream update: ${position.latitude}, ${position.longitude}');
+            print('?? [Rider] Location stream update: ${position.latitude}, ${position.longitude}');
             _lastPosition = position;
             _updateRiderLocation(position);
           },
           onError: (error) {
-            print('❌ [Rider] Location stream error: $error');
+            print('? [Rider] Location stream error: $error');
           },
           cancelOnError: false,
         );
         
-        print('🎉 [Rider] Location stream started successfully');
+        print('?? [Rider] Location stream started successfully');
       } else {
-        print('❌ [Rider] Location permission denied: $permission');
+        print('? [Rider] Location permission denied: $permission');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -138,7 +138,7 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
         }
       }
     } catch (e, stackTrace) {
-      print('❌ [Rider] Error starting location tracking: $e');
+      print('? [Rider] Error starting location tracking: $e');
       print('Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -154,7 +154,7 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
 
   Future<void> _updateRiderLocation(Position position) async {
     try {
-      print('📍 [Rider] Updating location: ${position.latitude}, ${position.longitude}');
+      print('?? [Rider] Updating location: ${position.latitude}, ${position.longitude}');
       
       final deliveryRef = FirebaseFirestore.instance
           .collection('deliveries')
@@ -164,7 +164,7 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
       final deliveryDoc = await deliveryRef.get();
       
       if (!deliveryDoc.exists) {
-        print('⚠️ [Rider] Delivery document does not exist! Creating it now...');
+        print('?? [Rider] Delivery document does not exist! Creating it now...');
         await deliveryRef.set({
           'orderId': widget.order.orderId,
           'riderId': widget.order.assignedRiderId,
@@ -172,20 +172,20 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
           'lastLocationUpdate': FieldValue.serverTimestamp(),
           'createdAt': FieldValue.serverTimestamp(),
         });
-        print('✅ [Rider] Delivery document created with location');
+        print('? [Rider] Delivery document created with location');
       } else {
         await deliveryRef.update({
           'currentLocation': GeoPoint(position.latitude, position.longitude),
           'lastLocationUpdate': FieldValue.serverTimestamp(),
         });
-        print('✅ [Rider] Location updated successfully');
+        print('? [Rider] Location updated successfully');
       }
       
       // Update route with current rider position
       _lastPosition = position;
       _updateRoutePolyline();
     } catch (e, stackTrace) {
-      print('❌ [Rider] Error updating location: $e');
+      print('? [Rider] Error updating location: $e');
       print('Stack trace: $stackTrace');
     }
   }
@@ -203,12 +203,12 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
 
     List<LatLng> routePoints = [];
     
-    // If we have rider's current location, show: Pickup → Rider → Drop
+    // If we have rider's current location, show: Pickup ? Rider ? Drop
     if (_lastPosition != null) {
       final riderLatLng = LatLng(_lastPosition!.latitude, _lastPosition!.longitude);
       routePoints = [pickupLatLng, riderLatLng, dropLatLng];
     } else {
-      // Otherwise just show: Pickup → Drop
+      // Otherwise just show: Pickup ? Drop
       routePoints = [pickupLatLng, dropLatLng];
     }
 
@@ -413,7 +413,7 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
                             Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
                             const SizedBox(width: 4),
                             Text(
-                              '3.5 km · 15 mins',
+                              '3.5 km � 15 mins',
                               style: GoogleFonts.poppins(
                                 fontSize: 12,
                                 color: Colors.grey[600],
@@ -866,7 +866,7 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              // ⚠️ Get navigator and data BEFORE closing dialog to avoid widget disposal errors
+              // ?? Get navigator and data BEFORE closing dialog to avoid widget disposal errors
               final navigator = Navigator.of(context);
               final scaffoldMessenger = ScaffoldMessenger.of(context);
               final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -896,7 +896,7 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
                     final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
                     foodSubtotal += (price * quantity);
                   }
-                  print('📊 [Cook] Calculated foodSubtotal from dish items: ₹$foodSubtotal');
+                  print('?? [Cook] Calculated foodSubtotal from dish items: ?$foodSubtotal');
                 }
                 
                 // Update order status to DELIVERED
@@ -929,24 +929,41 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
                   description: 'Delivery completed - Order #${widget.order.orderId.substring(0, 8)}',
                 );
                 
-                print('✅ Delivery completed! Rider earned ₹${riderEarning.toStringAsFixed(2)}');
+                print('? Delivery completed! Rider earned ₹${riderEarning.toStringAsFixed(2)}');
                 
                 // Credit cook's wallet with food earnings
-                if (cookId != null && foodSubtotal > 0) {
-                  print('💰 [Cook] Paying cook $cookId: ₹${foodSubtotal.toStringAsFixed(2)}');
-                  final cookWalletService = CookWalletService();
-                  await cookWalletService.creditWallet(
-                    cookId: cookId,
-                    amount: foodSubtotal,
-                    orderId: widget.order.orderId,
-                    description: 'Order earnings - Order #${widget.order.orderId.substring(0, 8)}',
-                  );
-                  print('✅ Cook earned ₹${foodSubtotal.toStringAsFixed(2)}');
+                print('?? [Cook] Starting cook payment process...');
+                print('   cookId: $cookId');
+                print('   foodSubtotal: ?$foodSubtotal');
+                print('   orderId: ${widget.order.orderId}');
+                
+                if (cookId == null) {
+                  print('? [Cook] ERROR: cookId is NULL! Cannot pay cook.');
+                } else if (foodSubtotal <= 0) {
+                  print('? [Cook] ERROR: foodSubtotal is $foodSubtotal! Cannot pay cook.');
                 } else {
-                  print('⚠️ [Cook] Payment skipped - cookId: $cookId, foodSubtotal: $foodSubtotal');
+                  try {
+                    print('?? [Cook] Paying cook $cookId: ₹${foodSubtotal.toStringAsFixed(2)}');
+                    final cookWalletService = CookWalletService();
+                    final transactionId = await cookWalletService.creditWallet(
+                      cookId: cookId,
+                      amount: foodSubtotal,
+                      orderId: widget.order.orderId,
+                      description: 'Order earnings - Order #${widget.order.orderId.substring(0, 8)}',
+                    );
+                    
+                    if (transactionId != null) {
+                      print('? [Cook] Cook earned ₹${foodSubtotal.toStringAsFixed(2)} - Transaction ID: $transactionId');
+                    } else {
+                      print('? [Cook] ERROR: creditWallet returned null!');
+                    }
+                  } catch (e, stackTrace) {
+                    print('? [Cook] EXCEPTION while paying cook: $e');
+                    print('   Stack trace: $stackTrace');
+                  }
                 }
 
-                // � Auto-navigate back to Rider Home (PRODUCTION REQUIREMENT)
+                // ? Auto-navigate back to Rider Home (PRODUCTION REQUIREMENT)
                 // Clear navigation stack and go to home screen
                 if (mounted) {
                   navigator.pushNamedAndRemoveUntil(
@@ -957,14 +974,14 @@ class _RiderActiveDeliveryScreenState extends State<RiderActiveDeliveryScreen> {
                   // Show success message
                   scaffoldMessenger.showSnackBar(
                     SnackBar(
-                      content: Text('✅ Delivery completed! +₹${riderEarning.toStringAsFixed(2)} earned'),
+                      content: Text('? Delivery completed! +₹${riderEarning.toStringAsFixed(2)} earned'),
                       backgroundColor: Colors.green,
                       duration: Duration(seconds: 3),
                     ),
                   );
                 }
               } catch (e) {
-                print('❌ Error completing delivery: $e');
+                print('? Error completing delivery: $e');
                 if (mounted) {
                   scaffoldMessenger.showSnackBar(
                     SnackBar(

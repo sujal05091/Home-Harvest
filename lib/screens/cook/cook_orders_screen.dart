@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/orders_provider.dart';
@@ -182,6 +182,35 @@ class _CookOrdersScreenState extends State<CookOrdersScreen> {
                   ],
                 ),
                 SizedBox(height: 12),
+                // Scheduled delivery badge
+                if (order.orderType == 'scheduled' &&
+                    order.scheduledDeliveryTime != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.schedule_rounded,
+                            size: 16, color: Colors.blue.shade700),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Scheduled: ${_formatScheduledTime(order.scheduledDeliveryTime!)}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -201,13 +230,31 @@ class _CookOrdersScreenState extends State<CookOrdersScreen> {
                       ),
                       SizedBox(height: 4),
                       ...order.dishItems.map((item) => Padding(
-                            padding: EdgeInsets.symmetric(vertical: 2),
-                            child: Text(
-                              '• ${item.dishName} x${item.quantity}',
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                color: AppTheme.textPrimary,
-                              ),
+                            padding: EdgeInsets.symmetric(vertical: 3),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '� ${item.dishName} x${item.quantity}',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                ),
+                                if (item.customization != null &&
+                                    item.customization!.hasAnyCustomization)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 14, top: 2),
+                                    child: Text(
+                                      item.customization!.summary,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        color: AppTheme.primaryOrange,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           )),
                     ],
@@ -359,6 +406,17 @@ class _CookOrdersScreenState extends State<CookOrdersScreen> {
         ],
       ),
     );
+  }
+
+  String _formatScheduledTime(DateTime dt) {
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    return '${dt.day} ${months[dt.month - 1]} at $hour:$minute $period';
   }
 
   List<OrderModel> _filterOrders(List<OrderModel> orders) {

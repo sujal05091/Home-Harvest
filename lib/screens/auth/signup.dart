@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../providers/auth_provider.dart';
 import '../../app_router.dart';
@@ -38,9 +38,11 @@ class _SignupScreenState extends State<SignupScreen> {
   String get _roleTitle {
     switch (widget.role) {
       case 'cook':
-        return 'Cook';
+        return 'Home Cook';
       case 'rider':
         return 'Delivery Partner';
+      case 'seller':
+        return 'Product Seller';
       case 'customer':
       default:
         return 'Customer';
@@ -53,6 +55,8 @@ class _SignupScreenState extends State<SignupScreen> {
         return 'assets/lottie/cook_signup.json';
       case 'rider':
         return 'assets/lottie/rider_signup.json';
+      case 'seller':
+        return 'assets/lottie/cook_signup.json'; // reuse cook animation
       case 'customer':
       default:
         return 'assets/lottie/customer_signup.json';
@@ -82,12 +86,15 @@ class _SignupScreenState extends State<SignupScreen> {
         onGoToHome: () {
           // Navigate based on role
           if (widget.role == 'cook') {
-            // Cook needs verification
-            Navigator.pushReplacementNamed(context, AppRouter.verificationStatus);
+            // Cook must choose their service(s) before going to verification
+            Navigator.pushReplacementNamed(
+                context, AppRouter.cookServiceSelection);
           } else if (widget.role == 'customer') {
             Navigator.pushReplacementNamed(context, AppRouter.customerHome);
           } else if (widget.role == 'rider') {
             Navigator.pushReplacementNamed(context, AppRouter.riderHome);
+          } else if (widget.role == 'seller') {
+            Navigator.pushReplacementNamed(context, AppRouter.sellerHome);
           }
         },
       );
@@ -219,7 +226,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Title
                 Text(
                   'Create Account',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.textPrimary,
@@ -230,7 +237,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Subtitle
                 Text(
                   'Start your journey as a $_roleTitle with HomeHarvest',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 14,
                     color: AppTheme.textSecondary,
                   ),
@@ -263,7 +270,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Full Name Field
                 Text(
                   'Full Name',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
@@ -274,7 +281,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _nameController,
                   decoration: InputDecoration(
                     hintText: 'Enter your full name',
-                    hintStyle: GoogleFonts.inter(
+                    hintStyle: GoogleFonts.poppins(
                       color: AppTheme.textSecondary,
                       fontSize: 14,
                     ),
@@ -301,7 +308,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Email or Phone Field
                 Text(
                   'Email',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
@@ -313,7 +320,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     hintText: 'Enter your email address',
-                    hintStyle: GoogleFonts.inter(
+                    hintStyle: GoogleFonts.poppins(
                       color: AppTheme.textSecondary,
                       fontSize: 14,
                     ),
@@ -340,7 +347,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Phone Field
                 Text(
                   'Phone Number',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
@@ -352,7 +359,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   keyboardType: TextInputType.phone,
                   decoration: InputDecoration(
                     hintText: 'Enter your phone number',
-                    hintStyle: GoogleFonts.inter(
+                    hintStyle: GoogleFonts.poppins(
                       color: AppTheme.textSecondary,
                       fontSize: 14,
                     ),
@@ -379,7 +386,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Password Field
                 Text(
                   'Password',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
@@ -391,7 +398,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     hintText: 'Create your password',
-                    hintStyle: GoogleFonts.inter(
+                    hintStyle: GoogleFonts.poppins(
                       color: AppTheme.textSecondary,
                       fontSize: 14,
                     ),
@@ -450,7 +457,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           )
                         : Text(
                             'Create Account',
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -468,7 +475,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Text(
                         'Or using other method',
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.poppins(
                           fontSize: 12,
                           color: AppTheme.textSecondary,
                         ),
@@ -492,7 +499,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                     label: Text(
                       'Sign Up with Google',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary,
@@ -529,7 +536,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                     label: Text(
                       'Sign Up with Facebook',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary,
@@ -560,14 +567,14 @@ class _SignupScreenState extends State<SignupScreen> {
                       children: [
                         Text(
                           'Have an account? ',
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.poppins(
                             fontSize: 14,
                             color: AppTheme.textSecondary,
                           ),
                         ),
                         Text(
                           'Login',
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.primaryOrange,

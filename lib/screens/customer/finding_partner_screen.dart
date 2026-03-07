@@ -216,9 +216,10 @@ class _FindingPartnerScreenState extends State<FindingPartnerScreen>
             );
           }
 
-          // 🍕 NORMAL FOOD WORKFLOW STAGES - Show different UI based on status
-          // isHomeToOffice = true means Tiffin, false means Normal Food
+          // 🍕 NORMAL FOOD / 🛍️ SELLER PRODUCT WORKFLOW STAGES
+          // isHomeToOffice = true means Tiffin, false means Normal Food or Product
           final isNormalFood = !order.isHomeToOffice;
+          final isProduct = order.isProductOrder;
           String stageTitle = '';
           String stageDescription = '';
           String lottieAsset = 'assets/lottie/delivery motorbike.json';
@@ -226,27 +227,35 @@ class _FindingPartnerScreenState extends State<FindingPartnerScreen>
 
           if (isNormalFood) {
             if (order.status == OrderStatus.PLACED) {
-              // Stage 1: Waiting for cook to accept
-              stageTitle = 'Waiting for Cook';
-              stageDescription = 'Cook will accept your order soon...';
+              // Stage 1: Waiting for seller/cook to accept
+              stageTitle = isProduct ? 'Waiting for Seller' : 'Waiting for Cook';
+              stageDescription = isProduct
+                  ? 'Seller will accept your order soon...'
+                  : 'Cook will accept your order soon...';
               lottieAsset = 'assets/lottie/cooking.json';
               stageColor = Colors.orange;
             } else if (order.status == OrderStatus.ACCEPTED) {
-              // Stage 2: Cook accepted, starting to prepare
-              stageTitle = '✅ Cook Accepted!';
-              stageDescription = 'Cook is getting ready to prepare your food';
+              // Stage 2: Accepted, getting ready
+              stageTitle = isProduct ? '✅ Seller Accepted!' : '✅ Cook Accepted!';
+              stageDescription = isProduct
+                  ? 'Seller is getting ready to pack your order'
+                  : 'Cook is getting ready to prepare your food';
               lottieAsset = 'assets/lottie/cooking.json';
               stageColor = Colors.green;
             } else if (order.status == OrderStatus.PREPARING) {
-              // Stage 3: Cook is preparing
-              stageTitle = '👨‍🍳 Cook is Preparing';
-              stageDescription = 'Your delicious food is being prepared with care';
+              // Stage 3: Preparing / Packing
+              stageTitle = isProduct ? '📦 Seller is Packing' : '👨‍🍳 Cook is Preparing';
+              stageDescription = isProduct
+                  ? 'Your product is being packed with care'
+                  : 'Your delicious food is being prepared with care';
               lottieAsset = 'assets/lottie/cooking.json';
               stageColor = Colors.blue;
             } else if (order.status == OrderStatus.READY) {
-              // Stage 4: Food ready, finding rider
+              // Stage 4: Ready, finding rider
               stageTitle = 'Finding Delivery Partner';
-              stageDescription = 'Searching for nearest rider to deliver your food';
+              stageDescription = isProduct
+                  ? 'Searching for nearest rider to deliver your product'
+                  : 'Searching for nearest rider to deliver your food';
               lottieAsset = 'assets/lottie/delivery motorbike.json';
               stageColor = const Color(0xFFFF6B35);
             } else {

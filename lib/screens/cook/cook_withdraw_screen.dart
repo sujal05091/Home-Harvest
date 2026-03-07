@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../services/cook_wallet_service.dart';
 import '../../models/cook_wallet_model.dart';
 import '../../providers/auth_provider.dart';
@@ -628,7 +628,7 @@ class _CookWithdrawScreenState extends State<CookWithdrawScreen> with SingleTick
               ),
               SizedBox(height: 4),
               Text(
-                request.upiId ?? '${request.bankName} • ${request.accountNumber?.replaceRange(0, request.accountNumber!.length - 4, '****')}',
+                request.upiId ?? '${request.bankName} � ${request.accountNumber?.replaceRange(0, request.accountNumber!.length - 4, '****')}',
                 style: TextStyle(color: Colors.grey[600], fontSize: 12),
               ),
               SizedBox(height: 4),

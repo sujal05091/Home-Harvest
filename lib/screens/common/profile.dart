@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../app_router.dart';
 
@@ -13,7 +13,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   String _selectedLanguage = 'EN';
-  String _selectedFlag = '🇮🇳';
+  String _selectedFlag = '????';
 
   void _showLanguageSelector() {
     showModalBottomSheet(
@@ -36,9 +36,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               SizedBox(height: 20),
-              _languageOption('🇮🇳', 'English', 'EN'),
-              _languageOption('🇮🇳', 'हिंदी', 'HI'),
-              _languageOption('🇮🇳', 'ಕನ್ನಡ', 'KN'),
+              _languageOption('????', 'English', 'EN'),
+              _languageOption('????', '?????', 'HI'),
+              _languageOption('????', '?????', 'KN'),
               SizedBox(height: 20),
             ],
           ),

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../models/dish_model.dart';
@@ -548,8 +548,8 @@ class _CookDishesScreenState extends State<CookDishesScreen> {
         SnackBar(
           content: Text(
             updatedDish.isAvailable
-                ? '✅ ${dish.title} marked as available'
-                : '⚠️ ${dish.title} marked as unavailable',
+                ? '? ${dish.title} marked as available'
+                : '?? ${dish.title} marked as unavailable',
           ),
           backgroundColor: updatedDish.isAvailable ? AppTheme.successGreen : Colors.orange,
           duration: const Duration(seconds: 2),
@@ -558,7 +558,7 @@ class _CookDishesScreenState extends State<CookDishesScreen> {
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('❌ Failed to update dish availability'),
+          content: Text('? Failed to update dish availability'),
           backgroundColor: Colors.red,
         ),
       );
@@ -619,14 +619,14 @@ class _CookDishesScreenState extends State<CookDishesScreen> {
               if (success && mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('✅ ${dish.title} deleted successfully'),
+                    content: Text('? ${dish.title} deleted successfully'),
                     backgroundColor: AppTheme.successGreen,
                   ),
                 );
               } else if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('❌ Failed to delete dish'),
+                    content: Text('? Failed to delete dish'),
                     backgroundColor: Colors.red,
                   ),
                 );

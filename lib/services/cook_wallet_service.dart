@@ -52,24 +52,34 @@ class CookWalletService {
     required String orderId,
     required String description,
   }) async {
+    print('🔵 [CookWalletService] creditWallet called');
+    print('   cookId: $cookId');
+    print('   amount: ₹$amount');
+    print('   orderId: $orderId');
+    
     if (amount <= 0) {
-      print('❌ Invalid credit amount: $amount');
+      print('❌ [CookWalletService] Invalid credit amount: $amount');
       return null;
     }
 
     try {
+      print('🔄 [CookWalletService] Fetching wallet for cook: $cookId');
       // Get current wallet
       final walletDoc = await _firestore.collection(WALLETS_COLLECTION).doc(cookId).get();
       
       CookWalletModel wallet;
       if (!walletDoc.exists) {
+        print('⚠️ [CookWalletService] Wallet does not exist, creating initial wallet');
         wallet = CookWalletModel.initial(cookId);
       } else {
+        print('✅ [CookWalletService] Wallet found');
         wallet = CookWalletModel.fromFirestore(walletDoc);
       }
 
       final balanceBefore = wallet.walletBalance;
       final balanceAfter = balanceBefore + amount;
+      
+      print('💰 [CookWalletService] Balance update: ₹$balanceBefore → ₹$balanceAfter');
 
       // Check if it's today's date
       final now = DateTime.now();
@@ -80,6 +90,9 @@ class CookWalletService {
 
       final newTodayEarnings = isToday ? wallet.todayEarnings + amount : amount;
       final newTotalEarnings = wallet.totalEarnings + amount;
+      
+      print('📊 [CookWalletService] Today earnings: ₹${wallet.todayEarnings} → ₹$newTodayEarnings');
+      print('📊 [CookWalletService] Total earnings: ₹${wallet.totalEarnings} → ₹$newTotalEarnings');
 
       // Create transaction record
       final transactionRef = _firestore.collection(TRANSACTIONS_COLLECTION).doc();
@@ -95,6 +108,7 @@ class CookWalletService {
         createdAt: DateTime.now(),
       );
 
+      print('🔄 [CookWalletService] Starting Firestore transaction...');
       // Update wallet and create transaction atomically
       await _firestore.runTransaction((txn) async {
         txn.set(
@@ -111,10 +125,12 @@ class CookWalletService {
         txn.set(transactionRef, transaction.toMap());
       });
 
-      print('✅ Credited ₹$amount to cook $cookId. New balance: ₹$balanceAfter');
+      print('✅ [CookWalletService] Credited ₹$amount to cook $cookId. New balance: ₹$balanceAfter');
+      print('✅ [CookWalletService] Transaction ID: ${transactionRef.id}');
       return transactionRef.id;
-    } catch (e) {
-      print('❌ Error crediting wallet: $e');
+    } catch (e, stackTrace) {
+      print('❌ [CookWalletService] Error crediting wallet: $e');
+      print('❌ [CookWalletService] Stack trace: $stackTrace');
       return null;
     }
   }

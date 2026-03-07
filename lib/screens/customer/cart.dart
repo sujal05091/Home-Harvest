@@ -483,6 +483,21 @@ class _CartScreenState extends State<CartScreen> {
                         ),
                       ],
                     ),
+                    // Show customization summary if any
+                    if (item.customization != null &&
+                        item.customization!.hasAnyCustomization) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        item.customization!.summary,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: const Color(0xFFFC8019).withOpacity(0.85),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -570,6 +585,36 @@ class _CartScreenState extends State<CartScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 10),
+                    // Customise Button
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: GestureDetector(
+                        onTap: () => _showCustomizeBottomSheet(context, item, ordersProvider),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xFFFC8019)),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.tune_rounded, size: 14, color: Color(0xFFFC8019)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Customise',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFFFC8019),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -577,6 +622,212 @@ class _CartScreenState extends State<CartScreen> {
           ),
         );
       },
+    );
+  }
+
+  void _showCustomizeBottomSheet(
+      BuildContext context, OrderItem item, OrdersProvider ordersProvider) {
+    String sugar = item.customization?.sugar ?? 'Normal';
+    String spice = item.customization?.spice ?? 'Normal';
+    String salt = item.customization?.salt ?? 'Normal';
+    String oil = item.customization?.oil ?? 'Normal';
+    final notesController =
+        TextEditingController(text: item.customization?.notes ?? '');
+
+    const options = ['Less', 'Normal', 'More'];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                Row(
+                  children: [
+                    const Icon(Icons.tune_rounded, color: Color(0xFFFC8019)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Customise ${item.dishName}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const Divider(),
+                const SizedBox(height: 8),
+
+                // Sugar
+                _buildSheetChipRow(
+                  label: '🍬 Sugar',
+                  selected: sugar,
+                  options: options,
+                  onChanged: (val) => setModalState(() => sugar = val),
+                ),
+                const SizedBox(height: 12),
+
+                // Spice
+                _buildSheetChipRow(
+                  label: '🌶️ Spice',
+                  selected: spice,
+                  options: options,
+                  onChanged: (val) => setModalState(() => spice = val),
+                ),
+                const SizedBox(height: 12),
+
+                // Salt
+                _buildSheetChipRow(
+                  label: '🧂 Salt',
+                  selected: salt,
+                  options: options,
+                  onChanged: (val) => setModalState(() => salt = val),
+                ),
+                const SizedBox(height: 12),
+
+                // Oil
+                _buildSheetChipRow(
+                  label: '🫒 Oil',
+                  selected: oil,
+                  options: options,
+                  onChanged: (val) => setModalState(() => oil = val),
+                ),
+                const SizedBox(height: 16),
+
+                // Notes
+                Text(
+                  'Special Instructions',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: notesController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    hintText: 'E.g. no onions, extra sauce...',
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Save button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final customization = FoodCustomization(
+                        sugar: sugar,
+                        spice: spice,
+                        salt: salt,
+                        oil: oil,
+                        notes: notesController.text.trim().isEmpty
+                            ? null
+                            : notesController.text.trim(),
+                      );
+                      ordersProvider.updateCartItemCustomization(
+                          item.dishId, customization);
+                      Navigator.pop(ctx);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFC8019),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Save Customisation',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSheetChipRow({
+    required String label,
+    required String selected,
+    required List<String> options,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: options.map((opt) {
+            final isSelected = selected == opt;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () => onChanged(opt),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFFFC8019)
+                        : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFFFC8019)
+                          : Colors.grey[300]!,
+                    ),
+                  ),
+                  child: Text(
+                    opt,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: isSelected ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 

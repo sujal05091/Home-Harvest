@@ -42,6 +42,9 @@ class _SplashScreenState extends State<SplashScreen> {
         case 'cook':
           Navigator.of(context).pushReplacementNamed(AppRouter.cookDashboardModern); // 🎨 NEW MODERN UI
           break;
+        case 'seller':
+          Navigator.of(context).pushReplacementNamed(AppRouter.sellerHome);
+          break;
         case 'rider':
           Navigator.of(context).pushReplacementNamed(AppRouter.riderHomeModern); // 🎨 NEW MODERN UI
           break;

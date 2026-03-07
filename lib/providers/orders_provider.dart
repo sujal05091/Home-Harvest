@@ -60,8 +60,8 @@ class OrdersProvider with ChangeNotifier {
   }
 
   // Cart operations
-  void addToCart(DishModel dish, {int quantity = 1}) {
-    // Check if dish already in cart
+  void addToCart(DishModel dish, {int quantity = 1, FoodCustomization? customization}) {
+    // Check if dish already in cart (same dishId)
     int existingIndex = _cartItems.indexWhere((item) => item.dishId == dish.dishId);
 
     if (existingIndex != -1) {
@@ -70,6 +70,7 @@ class OrdersProvider with ChangeNotifier {
         dishName: dish.title,
         price: dish.price,
         quantity: _cartItems[existingIndex].quantity + quantity,
+        customization: customization ?? _cartItems[existingIndex].customization,
       );
     } else {
       _cartItems.add(OrderItem(
@@ -77,6 +78,7 @@ class OrdersProvider with ChangeNotifier {
         dishName: dish.title,
         price: dish.price,
         quantity: quantity,
+        customization: customization,
       ));
     }
 
@@ -99,14 +101,50 @@ class OrdersProvider with ChangeNotifier {
           dishName: _cartItems[index].dishName,
           price: _cartItems[index].price,
           quantity: quantity,
+          customization: _cartItems[index].customization,
         );
         notifyListeners();
       }
     }
   }
 
+  void updateCartItemCustomization(String dishId, FoodCustomization customization) {
+    int index = _cartItems.indexWhere((item) => item.dishId == dishId);
+    if (index != -1) {
+      _cartItems[index] = OrderItem(
+        dishId: _cartItems[index].dishId,
+        dishName: _cartItems[index].dishName,
+        price: _cartItems[index].price,
+        quantity: _cartItems[index].quantity,
+        customization: customization,
+      );
+      notifyListeners();
+    }
+  }
+
   void clearCart() {
     _cartItems.clear();
+    notifyListeners();
+  }
+
+  /// Add a home-market product (HomeProductModel) to the cart by raw fields.
+  void addItemToCart(String id, String name, double price, {int quantity = 1}) {
+    final existing = _cartItems.indexWhere((item) => item.dishId == id);
+    if (existing != -1) {
+      _cartItems[existing] = OrderItem(
+        dishId: id,
+        dishName: name,
+        price: price,
+        quantity: _cartItems[existing].quantity + quantity,
+      );
+    } else {
+      _cartItems.add(OrderItem(
+        dishId: id,
+        dishName: name,
+        price: price,
+        quantity: quantity,
+      ));
+    }
     notifyListeners();
   }
 

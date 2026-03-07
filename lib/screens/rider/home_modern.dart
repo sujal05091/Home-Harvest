@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:async';
-import 'package:google_fonts/google_fonts.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/rider_provider.dart';
 import '../../models/delivery_model.dart';
@@ -33,7 +33,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   
-  // 🚚 Active order tracking
+  // ?? Active order tracking
   bool _hasActiveDelivery = false;
   OrderModel? _activeOrder;
 
@@ -57,14 +57,14 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen>
         return;
       }
 
-      print('✅ [RIDER HOME MODERN] Current user: ${authProvider.currentUser!.uid}');
+      print('? [RIDER HOME MODERN] Current user: ${authProvider.currentUser!.uid}');
 
       _checkActiveDelivery(authProvider.currentUser!.uid);
       _initializeLocalNotifications();
       _initializeFCM();
       
-      // 🚨 START NOTIFICATION LISTENER FOR POP-UPS (Normal Food Delivery)
-      print('🔔 [RIDER HOME MODERN] Starting notification listener...');
+      // ?? START NOTIFICATION LISTENER FOR POP-UPS (Normal Food Delivery)
+      print('?? [RIDER HOME MODERN] Starting notification listener...');
       RiderNotificationListener().initialize(MyApp.navigatorKey);
       RiderNotificationListener().startListening();
       
@@ -228,7 +228,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen>
     );
   }
 
-  // 🔥 Real-time listener for active deliveries
+  // ?? Real-time listener for active deliveries
   void _listenToActiveOrders(String riderId) {
     // Cancel existing subscription if any
     _activeOrderSubscription?.cancel();
@@ -269,17 +269,17 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen>
           _activeOrder = order;
         });
         
-        print('✅ [RIDER] Active delivery detected: ${order.orderId} | Status: ${order.status}');
+        print('? [RIDER] Active delivery detected: ${order.orderId} | Status: ${order.status}');
       } else {
         setState(() {
           _hasActiveDelivery = false;
           _activeOrder = null;
         });
         
-        print('ℹ️ [RIDER] No active delivery');
+        print('?? [RIDER] No active delivery');
       }
     }, onError: (error) {
-      print('❌ Error listening to active orders: $error');
+      print('? Error listening to active orders: $error');
     });
   }
 
@@ -408,7 +408,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen>
                               ],
                             ),
                             const SizedBox(height: 12),
-                            // 💰 Wallet Balance Display
+                            // ?? Wallet Balance Display
                             StreamBuilder<RiderWalletModel?>(
                               stream: WalletService().streamRiderWallet(authProvider.currentUser!.uid),
                               builder: (context, snapshot) {
@@ -660,7 +660,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen>
           ),
         ),
         
-        // 🚚 Active Delivery Banner (positioned at bottom)
+        // ?? Active Delivery Banner (positioned at bottom)
         if (_hasActiveDelivery && _activeOrder != null)
           Positioned(
             left: 0,
@@ -836,7 +836,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '₹${order.deliveryCharge?.toStringAsFixed(0) ?? '0'} • ${(order.distance ?? 0).toStringAsFixed(1)} km',
+                        '₹${order.deliveryCharge?.toStringAsFixed(0) ?? '0'} � ${(order.distance ?? 0).toStringAsFixed(1)} km',
                         style: GoogleFonts.poppins(
                           fontSize: 14,
                           color: Colors.white.withOpacity(0.9),
@@ -872,7 +872,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen>
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            // 🚀 Navigate to modern delivery tracking screen
+            // ?? Navigate to modern delivery tracking screen
             Navigator.pushNamed(
               context,
               AppRouter.riderDeliveryRequest,
@@ -908,7 +908,7 @@ class _RiderHomeModernScreenState extends State<RiderHomeModernScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${delivery.status.name} • ${delivery.distanceKm?.toStringAsFixed(1) ?? "N/A"} km',
+                        '${delivery.status.name} � ${delivery.distanceKm?.toStringAsFixed(1) ?? "N/A"} km',
                         style: GoogleFonts.poppins(
                           fontSize: 13,
                           color: Colors.grey[600],

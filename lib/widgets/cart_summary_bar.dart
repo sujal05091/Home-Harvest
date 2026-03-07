@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../providers/orders_provider.dart';
 import '../app_router.dart';
 
-/// 🛒 Swiggy-style Floating Cart Summary Bar
+/// ?? Swiggy-style Floating Cart Summary Bar
 /// 
 /// Shows at the bottom of screen when cart has items.
 /// Displays: Item count + Total price + "View Cart" action
@@ -135,7 +135,7 @@ class _CartSummaryBarState extends State<CartSummaryBar>
                     ),
                     child: Row(
                       children: [
-                        // 🛒 Cart Icon with Badge
+                        // ?? Cart Icon with Badge
                         Stack(
                           clipBehavior: Clip.none,
                           children: [

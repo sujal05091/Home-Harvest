@@ -53,7 +53,14 @@ import 'screens/rider/navigation_osm.dart' as osm_navigation;
 import 'screens/customer/finding_partner_screen.dart';
 import 'screens/customer/premium_tracking_screen.dart'; // 🎨 PREMIUM SWIGGY-STYLE TRACKING
 import 'screens/rider/rider_delivery_request_modern.dart'; // 🎨 NEW MODERN FULL-SCREEN DELIVERY REQUEST
-
+import 'screens/customer/home_harvest_market_screen.dart'; // 🛒 HOMEMADE MARKET
+import 'screens/customer/product_detail_screen.dart'; // 📦 PRODUCT DETAIL
+import 'models/home_product_model.dart';
+import 'screens/cook/cook_products_screen.dart'; // 🫙 COOK PRODUCT MANAGEMENT
+import 'screens/cook/cook_service_selection_screen.dart'; // 👨‍🍳 COOK SERVICE SELECTION
+import 'screens/cook/product_verification_form.dart'; // 🫙 PRODUCT VERIFICATION FORM
+import 'screens/cook/product_verification_status.dart'; // 🫙 PRODUCT VERIFICATION STATUS
+import 'screens/seller/seller_dashboard.dart'; // 🛍️ SELLER DASHBOARD
 class AppRouter {
   // Route names
   static const String splash = '/';
@@ -124,6 +131,18 @@ class AppRouter {
   static const String premiumTracking = '/customer/premium-tracking'; // 🎨 NEW PREMIUM TRACKING
   static const String riderDeliveryRequest = '/rider/delivery-request';
 
+  // �️ SELLER routes
+  static const String sellerHome = '/seller/home';
+
+  // �🛒 HOMEMADE MARKET Routes
+  static const String harvestMarket = '/customer/harvest-market';
+
+  static const String productDetail = '/customer/product-detail';
+  static const String cookProducts = '/cook/products';
+  static const String cookServiceSelection = '/cook/service-selection';
+  static const String productVerificationStatus = '/cook/product-verification-status';
+  static const String productVerificationForm = '/cook/product-verification-form';
+
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
       case splash:
@@ -185,7 +204,45 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => RiderDeliveryRequestModernScreen(orderId: args['orderId']),
         );
-      
+
+      // 🛒 HOMEMADE MARKET
+      case harvestMarket:
+        return MaterialPageRoute(
+          builder: (_) => const HomeHarvestMarketScreen(),
+        );
+
+      case productDetail:
+        final product = settings.arguments as HomeProductModel;
+        return MaterialPageRoute(
+          builder: (_) => ProductDetailScreen(product: product),
+        );
+
+      case cookProducts:
+        return MaterialPageRoute(
+          builder: (_) => const CookProductsScreen(),
+        );
+
+      case cookServiceSelection:
+        return MaterialPageRoute(
+          builder: (_) => const CookServiceSelectionScreen(),
+        );
+
+      case productVerificationStatus:
+        return MaterialPageRoute(
+          builder: (_) => const ProductVerificationStatusScreen(),
+        );
+
+      case productVerificationForm:
+        return MaterialPageRoute(
+          builder: (_) => const ProductVerificationFormScreen(),
+        );
+
+      // 🛍️ SELLER
+      case sellerHome:
+        return MaterialPageRoute(
+          builder: (_) => const SellerDashboardScreen(),
+        );
+
       case login:
         final args = settings.arguments as Map<String, dynamic>?;
         return MaterialPageRoute(

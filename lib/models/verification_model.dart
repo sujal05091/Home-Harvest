@@ -173,3 +173,135 @@ class VerificationModel {
     );
   }
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🫙 PRODUCT SELLER VERIFICATION MODEL
+// Firestore collection: product_verifications
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class ProductVerificationModel {
+  final String verificationId;
+  final String sellerId;
+  final String sellerName;
+  final String sellerEmail;
+  final String sellerPhone;
+
+  // Workplace details
+  final String workplaceName;
+  final String workplaceAddress;
+  final List<String> workplaceImages;
+  final String? workplaceVideoUrl;
+
+  // Product details
+  final List<String> specialProducts; // What they sell e.g. pickles, masala
+  final List<String> ingredientsUsed; // Main ingredients used
+  final int experienceYears;          // Years of experience
+  final String? fssaiNumber;          // FSSAI certification number
+
+  // Status
+  final VerificationStatus status;
+  final String? adminNotes;
+  final String? rejectionReason;
+  final DateTime createdAt;
+  final DateTime? reviewedAt;
+
+  ProductVerificationModel({
+    required this.verificationId,
+    required this.sellerId,
+    required this.sellerName,
+    required this.sellerEmail,
+    required this.sellerPhone,
+    required this.workplaceName,
+    required this.workplaceAddress,
+    this.workplaceImages = const [],
+    this.workplaceVideoUrl,
+    this.specialProducts = const [],
+    this.ingredientsUsed = const [],
+    this.experienceYears = 0,
+    this.fssaiNumber,
+    required this.status,
+    this.adminNotes,
+    this.rejectionReason,
+    required this.createdAt,
+    this.reviewedAt,
+  });
+
+  factory ProductVerificationModel.fromMap(
+      Map<String, dynamic> map, String id) {
+    return ProductVerificationModel(
+      verificationId: id,
+      sellerId: map['sellerId'] ?? '',
+      sellerName: map['sellerName'] ?? '',
+      sellerEmail: map['sellerEmail'] ?? '',
+      sellerPhone: map['sellerPhone'] ?? '',
+      workplaceName: map['workplaceName'] ?? '',
+      workplaceAddress: map['workplaceAddress'] ?? '',
+      workplaceImages: List<String>.from(map['workplaceImages'] ?? []),
+      workplaceVideoUrl: map['workplaceVideoUrl'],
+      specialProducts: List<String>.from(map['specialProducts'] ?? []),
+      ingredientsUsed: List<String>.from(map['ingredientsUsed'] ?? []),
+      experienceYears: map['experienceYears'] ?? 0,
+      fssaiNumber: map['fssaiNumber'],
+      status: VerificationStatus.values.firstWhere(
+        (e) => e.name == map['status'],
+        orElse: () => VerificationStatus.PENDING,
+      ),
+      adminNotes: map['adminNotes'],
+      rejectionReason: map['rejectionReason'],
+      createdAt:
+          (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      reviewedAt: (map['reviewedAt'] as Timestamp?)?.toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'sellerId': sellerId,
+      'sellerName': sellerName,
+      'sellerEmail': sellerEmail,
+      'sellerPhone': sellerPhone,
+      'workplaceName': workplaceName,
+      'workplaceAddress': workplaceAddress,
+      'workplaceImages': workplaceImages,
+      'workplaceVideoUrl': workplaceVideoUrl,
+      'specialProducts': specialProducts,
+      'ingredientsUsed': ingredientsUsed,
+      'experienceYears': experienceYears,
+      'fssaiNumber': fssaiNumber,
+      'status': status.name,
+      'adminNotes': adminNotes,
+      'rejectionReason': rejectionReason,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'reviewedAt':
+          reviewedAt != null ? Timestamp.fromDate(reviewedAt!) : null,
+    };
+  }
+
+  ProductVerificationModel copyWith({
+    VerificationStatus? status,
+    String? adminNotes,
+    String? rejectionReason,
+    DateTime? reviewedAt,
+  }) {
+    return ProductVerificationModel(
+      verificationId: verificationId,
+      sellerId: sellerId,
+      sellerName: sellerName,
+      sellerEmail: sellerEmail,
+      sellerPhone: sellerPhone,
+      workplaceName: workplaceName,
+      workplaceAddress: workplaceAddress,
+      workplaceImages: workplaceImages,
+      workplaceVideoUrl: workplaceVideoUrl,
+      specialProducts: specialProducts,
+      ingredientsUsed: ingredientsUsed,
+      experienceYears: experienceYears,
+      fssaiNumber: fssaiNumber,
+      status: status ?? this.status,
+      adminNotes: adminNotes ?? this.adminNotes,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      createdAt: createdAt,
+      reviewedAt: reviewedAt ?? this.reviewedAt,
+    );
+  }
+}

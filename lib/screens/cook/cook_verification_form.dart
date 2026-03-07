@@ -4,11 +4,14 @@ import 'package:provider/provider.dart';
 import 'dart:io';
 import 'package:uuid/uuid.dart';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../services/storage_service.dart';
 import '../../models/verification_model.dart';
 import '../../theme.dart';
+import 'product_verification_status.dart';
 
 /// ✅ PROFESSIONAL Cook Verification Form
 /// Collects all required information for cook verification
@@ -150,16 +153,38 @@ class _CookVerificationFormScreenState extends State<CookVerificationFormScreen>
       // ✅ Submit to Firestore (auto-updates user verificationStatus to PENDING)
       await _firestoreService.submitVerification(verification);
 
+      // Check if user also selected homeProductSeller → chain to product verification
+      bool isProductSeller = false;
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .get();
+        final services =
+            userDoc.data()?['services'] as Map<String, dynamic>? ?? {};
+        isProductSeller = services['homeProductSeller'] == true;
+      } catch (_) {}
+
       if (mounted) {
-        // ✅ Show success and navigate back
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Verification submitted! Awaiting admin approval'),
+          SnackBar(
+            content: Text(isProductSeller
+                ? '✅ Kitchen verified! Now complete your product seller verification.'
+                : '✅ Verification submitted! Awaiting admin approval'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 3),
           ),
         );
-        Navigator.pop(context);
+        if (isProductSeller) {
+          // Chain to product verification
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+                builder: (_) => const ProductVerificationStatusScreen()),
+          );
+        } else {
+          Navigator.pop(context);
+        }
       }
     } catch (e) {
       _showError('Failed to submit: $e');

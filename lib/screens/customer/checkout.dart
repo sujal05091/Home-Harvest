@@ -7,7 +7,6 @@ import '../../providers/auth_provider.dart';
 import '../../providers/dishes_provider.dart';
 import '../../models/order_model.dart';
 import '../../models/address_model.dart';
-import '../../models/dish_model.dart';
 import '../../app_router.dart';
 import '../../services/delivery_charge_service.dart';
 import '../../services/pricing_service.dart';
@@ -27,7 +26,10 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   AddressModel? _selectedAddress;
-  DishModel? _firstDish;
+  GeoPoint? _pickupLocation;
+  String? _sellerId;
+  String? _sellerName;
+  bool _isHomeProductOrder = false;
   double? _deliveryCharge;
   double? _distance;
   double? _riderEarning;
@@ -36,6 +38,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _isPlacingOrder = false;
   final TextEditingController _voucherController = TextEditingController();
   String _paymentMethod = 'COD';
+
+  // ─── Scheduling state ──────────────────────────────────────────────────────
+  bool _isScheduled = false;
+  DateTime? _scheduledDate;
+  TimeOfDay? _scheduledTime;
 
   @override
   void initState() {
@@ -111,6 +118,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         const SizedBox(height: 24),
                         // Voucher Code Section
                         _buildVoucherSection(),
+                        const SizedBox(height: 24),
+                        // Schedule Meal Section
+                        _buildScheduleSection(),
                         const SizedBox(height: 24),
                       ],
                     ),
@@ -553,7 +563,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
-              onPressed: _selectedAddress == null || _isPlacingOrder || _deliveryCharge == null
+              onPressed: _selectedAddress == null || _isPlacingOrder || _deliveryCharge == null ||
+                      (_isScheduled && (_scheduledDate == null || _scheduledTime == null))
                   ? null
                   : _placeOrder,
               style: ElevatedButton.styleFrom(
@@ -615,18 +626,53 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final dishesProvider = Provider.of<DishesProvider>(context, listen: false);
 
     try {
-      // Get first dish details (cook location)
+      // Try regular cook dish first
       final dish = await dishesProvider.getDishById(
         ordersProvider.cartItems.first.dishId
       );
 
-      if (dish == null || _selectedAddress == null) {
+      GeoPoint pickupGeoPoint;
+      String sellerId;
+      String sellerName;
+
+      if (dish != null) {
+        // Regular cook dish
+        pickupGeoPoint = dish.location;
+        sellerId = dish.cookId;
+        sellerName = dish.cookName;
+      } else {
+        // Home market product — fetch from home_products + seller's user profile
+        _isHomeProductOrder = true;
+        final productId = ordersProvider.cartItems.first.dishId;
+        final productDoc = await FirebaseFirestore.instance
+            .collection('home_products')
+            .doc(productId)
+            .get();
+
+        if (!productDoc.exists) throw Exception('Failed to load details');
+
+        final data = productDoc.data()!;
+        sellerId = (data['sellerId'] as String?) ?? '';
+        sellerName = (data['sellerName'] as String?) ?? 'Seller';
+        if (sellerId.isEmpty) throw Exception('Failed to load details');
+
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(sellerId)
+            .get();
+
+        final geoPoint = userDoc.data()?['location'] as GeoPoint?;
+        if (geoPoint == null) throw Exception('Seller location not set. Ask seller to update profile.');
+        pickupGeoPoint = geoPoint;
+      }
+
+      if (_selectedAddress == null) {
         throw Exception('Failed to load details');
       }
 
       // ⚠️ CRITICAL VALIDATION: Check coordinates BEFORE calling OSRM
-      final pickupLat = dish.location.latitude;
-      final pickupLng = dish.location.longitude;
+      final pickupLat = pickupGeoPoint.latitude;
+      final pickupLng = pickupGeoPoint.longitude;
       final dropLat = _selectedAddress!.location.latitude;
       final dropLng = _selectedAddress!.location.longitude;
       
@@ -651,8 +697,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // ✅ FIX: Calculate ACTUAL ROAD DISTANCE using OSRM (not straight line!)
       
       final pickupLocation = LatLng(
-        dish.location.latitude, 
-        dish.location.longitude,
+        pickupGeoPoint.latitude, 
+        pickupGeoPoint.longitude,
       );
       final dropLocation = LatLng(
         _selectedAddress!.location.latitude,
@@ -685,7 +731,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final platformCommissionFromFood = foodPrice * 0.10; // 10% of food price
 
       setState(() {
-        _firstDish = dish;
+        _sellerId = sellerId;
+        _sellerName = sellerName;
+        _pickupLocation = pickupGeoPoint;
         _distance = distanceKm;
         _deliveryCharge = pricing['deliveryCharge'];
         _riderEarning = pricing['riderEarning']; // 100% of delivery charge for Normal Food
@@ -786,7 +834,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _placeOrder() async {
     print('🛒 [Checkout] _placeOrder() called');
     
-    if (_selectedAddress == null || _firstDish == null || _deliveryCharge == null) {
+    if (_selectedAddress == null || _pickupLocation == null || _sellerId == null || _deliveryCharge == null) {
       print('❌ [Checkout] Missing required data');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select delivery address')),
@@ -810,7 +858,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       try {
         final cookDoc = await FirebaseFirestore.instance
             .collection('users')
-            .doc(_firstDish!.cookId)
+            .doc(_sellerId!)
             .get();
         if (cookDoc.exists) {
           cookPhone = cookDoc.data()?['phone'];
@@ -825,15 +873,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         customerId: authProvider.currentUser!.uid,
         customerName: authProvider.currentUser!.name,
         customerPhone: authProvider.currentUser!.phone,
-        cookId: _firstDish!.cookId,
-        cookName: _firstDish!.cookName,
+        cookId: _sellerId!,
+        cookName: _sellerName!,
         cookPhone: cookPhone,
         dishItems: cartItemsList,
         total: foodTotal + _deliveryCharge!,
         paymentMethod: _paymentMethod,
         status: OrderStatus.PLACED,
-        pickupAddress: '${_firstDish!.cookName}\'s Kitchen',
-        pickupLocation: _firstDish!.location,
+        pickupAddress: '${_sellerName!}\'s Kitchen',
+        pickupLocation: _pickupLocation!,
         dropAddress: _selectedAddress!.fullAddress,
         dropLocation: _selectedAddress!.location,
         createdAt: DateTime.now(),
@@ -845,6 +893,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         cashCollected: null,
         pendingSettlement: null,
         isSettled: false,
+        orderType: _isScheduled ? 'scheduled' : 'instant',
+        scheduledDeliveryTime: _isScheduled ? _buildScheduledDateTime() : null,
+        isProductOrder: _isHomeProductOrder,
       );
 
       print('📦 [Checkout] Creating order...');
@@ -852,21 +903,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       print('📦 [Checkout] Order created with ID: $orderId');
       
       if (orderId != null && mounted) {
-        // ✅ Notify cook about new order
+        // ✅ Notify seller / cook about new order
         try {
-          print('🔔 [Checkout] Notifying cook about new order...');
           final dishNames = cartItemsList
               .map((item) => item.dishName)
               .join(', ');
-          
-          await FCMService().notifyCook(
-            cookId: _firstDish!.cookId,
-            orderId: orderId,
-            customerName: authProvider.currentUser!.name,
-            dishNames: dishNames,
-            totalAmount: foodTotal,  // ✅ Using saved food total
-          );
-          print('✅ [Checkout] Cook notification sent with amount: ₹$foodTotal');
+
+          if (_isHomeProductOrder) {
+            // HOME MARKET product order → notify seller
+            print('🔔 [Checkout] Notifying SELLER about new product order...');
+            await FCMService().notifySeller(
+              sellerId: _sellerId!,
+              orderId: orderId,
+              customerName: authProvider.currentUser!.name,
+              productNames: dishNames,
+              totalAmount: foodTotal,
+            );
+            print('✅ [Checkout] Seller notification sent with amount: ₹$foodTotal');
+          } else {
+            // Regular cook food order → notify cook
+            print('🔔 [Checkout] Notifying COOK about new order...');
+            await FCMService().notifyCook(
+              cookId: _sellerId!,
+              orderId: orderId,
+              customerName: authProvider.currentUser!.name,
+              dishNames: dishNames,
+              totalAmount: foodTotal,
+            );
+            print('✅ [Checkout] Cook notification sent with amount: ₹$foodTotal');
+          }
         } catch (e) {
           print('❌ [Checkout] Failed to notify cook: $e');
         }
@@ -954,6 +1019,289 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       default:
         return '';
     }
+  }
+
+  // 🗓️ SCHEDULE MEAL SECTION
+  Widget _buildScheduleSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            'Delivery Time',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(
+            children: [
+              // Deliver Now
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _isScheduled = false),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: !_isScheduled
+                          ? const Color(0xFFFC8019)
+                          : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: !_isScheduled
+                            ? const Color(0xFFFC8019)
+                            : Colors.grey[300]!,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.flash_on_rounded,
+                            color: !_isScheduled
+                                ? Colors.white
+                                : Colors.grey[500],
+                            size: 22),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Deliver Now',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: !_isScheduled
+                                ? Colors.white
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Schedule Later
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _isScheduled = true),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color:
+                          _isScheduled ? const Color(0xFFFC8019) : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _isScheduled
+                            ? const Color(0xFFFC8019)
+                            : Colors.grey[300]!,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.schedule_rounded,
+                            color: _isScheduled
+                                ? Colors.white
+                                : Colors.grey[500],
+                            size: 22),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Schedule Later',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _isScheduled
+                                ? Colors.white
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Date & time pickers when scheduled
+        if (_isScheduled) ...[
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              children: [
+                // Date picker
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _scheduledDate ?? now.add(const Duration(hours: 1)),
+                        firstDate: now,
+                        lastDate: now.add(const Duration(days: 7)),
+                        builder: (context, child) => Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: const ColorScheme.light(
+                              primary: Color(0xFFFC8019),
+                            ),
+                          ),
+                          child: child!,
+                        ),
+                      );
+                      if (picked != null) {
+                        setState(() => _scheduledDate = picked);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _scheduledDate != null
+                              ? const Color(0xFFFC8019)
+                              : Colors.grey[300]!,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today_rounded,
+                              size: 18,
+                              color: _scheduledDate != null
+                                  ? const Color(0xFFFC8019)
+                                  : Colors.grey[500]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _scheduledDate != null
+                                  ? '${_scheduledDate!.day}/${_scheduledDate!.month}/${_scheduledDate!.year}'
+                                  : 'Pick Date',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: _scheduledDate != null
+                                    ? Colors.black87
+                                    : Colors.grey[500],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Time picker
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: _scheduledTime ??
+                            TimeOfDay.fromDateTime(
+                                DateTime.now().add(const Duration(hours: 1))),
+                        builder: (context, child) => Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: const ColorScheme.light(
+                              primary: Color(0xFFFC8019),
+                            ),
+                          ),
+                          child: child!,
+                        ),
+                      );
+                      if (picked != null) {
+                        setState(() => _scheduledTime = picked);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _scheduledTime != null
+                              ? const Color(0xFFFC8019)
+                              : Colors.grey[300]!,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.access_time_rounded,
+                              size: 18,
+                              color: _scheduledTime != null
+                                  ? const Color(0xFFFC8019)
+                                  : Colors.grey[500]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _scheduledTime != null
+                                  ? _scheduledTime!.format(context)
+                                  : 'Pick Time',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: _scheduledTime != null
+                                    ? Colors.black87
+                                    : Colors.grey[500],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_scheduledDate != null && _scheduledTime != null) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFC8019).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline,
+                        color: Color(0xFFFC8019), size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Deliver on ${_scheduledDate!.day}/${_scheduledDate!.month}/${_scheduledDate!.year} at ${_scheduledTime!.format(context)}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFFFC8019),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  DateTime? _buildScheduledDateTime() {
+    if (_scheduledDate == null || _scheduledTime == null) return null;
+    return DateTime(
+      _scheduledDate!.year,
+      _scheduledDate!.month,
+      _scheduledDate!.day,
+      _scheduledTime!.hour,
+      _scheduledTime!.minute,
+    );
   }
 }
 

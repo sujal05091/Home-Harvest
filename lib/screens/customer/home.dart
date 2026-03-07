@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
@@ -9,7 +10,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../providers/dishes_provider.dart';
 import '../../providers/favorites_provider.dart';
 import '../../providers/orders_provider.dart';
@@ -98,7 +98,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
     });
   }
   
-  // 🚀 Check for active delivery on app launch
+  // ?? Check for active delivery on app launch
   Future<void> _checkActiveOrder() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
@@ -122,11 +122,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
         });
       }
     } catch (e) {
-      print('❌ Error checking active order: $e');
+      print('? Error checking active order: $e');
     }
   }
 
-  // � Real-time listener for active orders (updates when user comes back from tracking)
+  // ? Real-time listener for active orders (updates when user comes back from tracking)
   void _listenToActiveOrders() {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
@@ -166,21 +166,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
           _activeOrder = order;
         });
         
-        print('✅ Active delivery detected: ${order.orderId} | Status: ${order.status}');
+        print('? Active delivery detected: ${order.orderId} | Status: ${order.status}');
       } else {
         setState(() {
           _hasActiveDelivery = false;
           _activeOrder = null;
         });
         
-        print('ℹ️ No active delivery');
+        print('?? No active delivery');
       }
     }, onError: (error) {
-      print('❌ Error listening to active orders: $error');
+      print('? Error listening to active orders: $error');
     });
   }
 
-  // �📍 Get user's current location
+  // ??? Get user's current location
   Future<void> _getCurrentLocation() async {
     try {
       // Check if location services are enabled
@@ -242,7 +242,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
         });
       }
     } catch (e) {
-      print('❌ Error getting location: $e');
+      print('? Error getting location: $e');
       if (mounted) {
         setState(() {
           _currentLocation = 'Unable to get location';
@@ -322,12 +322,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
                 child: _buildCategoryChips(),
               ),
               
-              // 🏢 HOME → OFFICE TIFFIN SERVICE CARD
+              // ?? HOME ? OFFICE TIFFIN SERVICE CARD
               SliverToBoxAdapter(
                 child: _buildTiffinServiceCard(),
               ),
+
+              // ?? HOMEMADE MARKET CARD
+              SliverToBoxAdapter(
+                child: _buildMarketCard(),
+              ),
               
-              // 👨‍🍳 COOK SECTIONS (Grouped by Cook like Swiggy/Zomato)
+              // ????? COOK SECTIONS (Grouped by Cook like Swiggy/Zomato)
               SliverToBoxAdapter(
                 child: _buildCookSections(),
               ),
@@ -458,7 +463,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
                 Navigator.pushNamed(context, AppRouter.settingsPage);
               }),
               Divider(height: 48),
-              _buildDrawerItem(Icons.business_center, 'Home → Office Tiffin', 
+              _buildDrawerItem(Icons.business_center, 'Home ? Office Tiffin', 
                 badge: 'NEW', isNew: true, onTap: () {
                   Navigator.pop(context);
                   Navigator.pushNamed(context, AppRouter.tiffinOrder);
@@ -499,19 +504,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
     final banners = [
       {
         'image': 'assets/images/home-harvest-logo1.jpeg',
-        'title': '🍱 Fresh Home-Cooked Meals',
+        'emoji': '🍱',
+        'title': 'Fresh Home-Cooked Meals',
         'subtitle': 'Healthy Ghar Ka Khana',
         'description': 'Cooked by verified home cooks using fresh ingredients'
       },
       {
         'image': 'assets/images/home-office-tiffin1.jpeg',
-        'title': '🏢 Home → Office Tiffin',
+        'emoji': '🏢',
+        'title': 'Home → Office Tiffin',
         'subtitle': 'Daily Tiffin Service',
         'description': 'No cooking. No stress. Just homely food at work.'
       },
       {
         'image': 'assets/images/home-local-home-cooks1.jpeg',
-        'title': '👩‍🍳 Local Home Cooks',
+        'emoji': '👩‍🍳',
+        'title': 'Local Home Cooks',
         'subtitle': 'Made With Care & Love',
         'description': 'Hygienic, verified cooks from your neighborhood'
       },
@@ -756,13 +764,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  banner['title']!,
-                  style: GoogleFonts.oswald(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w400,
-                    letterSpacing: 1.5,
+                RichText(
+                  textAlign: TextAlign.center,
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '${banner['emoji']!} ',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          color: Colors.white,
+                        ),
+                      ),
+                      TextSpan(
+                        text: banner['title']!,
+                        style: GoogleFonts.oswald(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 SizedBox(height: 8),
@@ -902,7 +924,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
     );
   }
 
-  // 🏢 HOME → OFFICE TIFFIN SERVICE CARD
+  // ?? HOME ? OFFICE TIFFIN SERVICE CARD
   Widget _buildTiffinServiceCard() {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -1053,9 +1075,136 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
     );
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 👨‍🍳 COOK SECTIONS (Grouped by Cook like Swiggy/Zomato)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ?????????????????????????????????????????????????????????????????????
+  // ? HOMEMADE MARKET CARD
+  // ?????????????????????????????????????????????????????????????????????
+
+  Widget _buildMarketCard() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: value,
+          child: GestureDetector(
+            onTap: () => Navigator.pushNamed(context, AppRouter.harvestMarket),
+            child: Container(
+              height: 120,
+              margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Stack(
+                  children: [
+                    // Orange tinted background
+                    Positioned.fill(
+                      child: Container(
+                        color: const Color(0xFFFFF3E0),
+                      ),
+                    ),
+
+                    // Emoji decoration on the right
+                    Positioned(
+                      right: 24,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: Text(
+                          '🫙',
+                          style: const TextStyle(fontSize: 64, fontFamily: null),
+                        ),
+                      ),
+                    ),
+
+                    // Content
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Home Made Products',
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.black,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFC8019).withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.storefront,
+                                          color: Color(0xFFFC8019), size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Traditional Homemade Foods',
+                                        style: GoogleFonts.poppins(
+                                          color: const Color(0xFFFC8019),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Arrow button
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFFC8019),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.arrow_forward_ios,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ?????????????????????????????????????????????????????????????????????
+  // ?????? COOK SECTIONS (Grouped by Cook like Swiggy/Zomato)
+  // ?????????????????????????????????????????????????????????????????????
   
   Widget _buildCookSections() {
     return Consumer<DishesProvider>(
@@ -1117,12 +1266,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Row(
                 children: [
-                  Text(
-                    "👨‍🍳 Our Verified Cooks",
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                  RichText(
+                    text: TextSpan(
+                      children: [
+                        const TextSpan(
+                          text: '👨‍🍳 ',
+                          style: TextStyle(fontSize: 20, color: Colors.black87),
+                        ),
+                        TextSpan(
+                          text: 'Our Verified Cooks',
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const Spacer(),
@@ -1159,9 +1318,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
     );
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ?????????????????????????????????????????????????????????????????????
   // COMPACT DISH CARD (For Horizontal Scroll within Cook Sections)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ?????????????????????????????????????????????????????????????????????
   
   Widget _buildCompactDishCard(DishModel dish) {
     return Container(
@@ -1305,7 +1464,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
                                               text: TextSpan(
                                                 children: [
                                                   TextSpan(
-                                                    text: '₹ ',
+                                                    text: '? ',
                                                     style: GoogleFonts.poppins(
                                                       fontSize: 12,
                                                       fontWeight: FontWeight.w500,
@@ -1369,9 +1528,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
     );
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ?????????????????????????????????????????????????????????????????????
   // NAVIGATION HELPER
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ?????????????????????????????????????????????????????????????????????
   
   void _navigateToDishDetail(DishModel dish) {
     Navigator.of(context).pushNamed(
@@ -1380,9 +1539,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
     );
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ?????????????????????????????????????????????????????????????????????
   // OLD METHODS (Kept for reference, not used)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ?????????????????????????????????????????????????????????????????????
 
   Widget _buildHotDealsSection(List<DishModel> dishes) {
     final hotDeals = dishes.take(3).toList();
@@ -1395,7 +1554,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "Today's Special 👩‍🍳",
+                "Today's Special ?????",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               Text(
@@ -1431,7 +1590,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Most bought 🔥',
+                'Most bought ??',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               Text(
@@ -1607,7 +1766,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with SingleTick
                                                 text: TextSpan(
                                                   children: [
                                                     TextSpan(
-                                                      text: '₹ ',
+                                                      text: '? ',
                                                       style: GoogleFonts.poppins(
                                                         fontSize: 12,
                                                         fontWeight: FontWeight.w500,

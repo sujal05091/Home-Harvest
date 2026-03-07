@@ -13,6 +13,7 @@ import 'providers/dishes_provider.dart';
 import 'providers/orders_provider.dart';
 import 'providers/rider_provider.dart';
 import 'providers/favorites_provider.dart';
+import 'providers/home_products_provider.dart';
 import 'services/notification_service.dart';
 import 'services/fcm_service.dart';
 import 'services/rider_notification_listener.dart';
@@ -259,6 +260,7 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider(create: (_) => OrdersProvider()),
         ChangeNotifierProvider(create: (_) => RiderProvider()),
         ChangeNotifierProvider(create: (_) => FavoritesProvider()),
+        ChangeNotifierProvider(create: (_) => HomeProductsProvider()),
       ],
       child: AppBackground(
         showImage: true,

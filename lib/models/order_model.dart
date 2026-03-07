@@ -1,5 +1,60 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// ─── FOOD CUSTOMIZATION ────────────────────────────────────────────────────────
+class FoodCustomization {
+  final String? sugar;  // "Normal" | "Less Sugar" | "No Sugar"
+  final String? spice;  // "Mild" | "Normal" | "Extra Spicy"
+  final String? salt;   // "Normal" | "Less Salt"
+  final String? oil;    // "Normal" | "Low Oil"
+  final String? notes;  // Free text
+
+  const FoodCustomization({
+    this.sugar,
+    this.spice,
+    this.salt,
+    this.oil,
+    this.notes,
+  });
+
+  bool get hasAnyCustomization =>
+      (sugar != null && sugar != 'Normal') ||
+      (spice != null && spice != 'Normal') ||
+      (salt != null && salt != 'Normal') ||
+      (oil != null && oil != 'Normal') ||
+      (notes != null && notes!.isNotEmpty);
+
+  /// Short summary string for cart display
+  String get summary {
+    final parts = <String>[];
+    if (sugar != null && sugar != 'Normal') parts.add(sugar!);
+    if (spice != null && spice != 'Normal') parts.add(spice!);
+    if (salt != null && salt != 'Normal') parts.add(salt!);
+    if (oil != null && oil != 'Normal') parts.add(oil!);
+    if (notes != null && notes!.isNotEmpty) parts.add('"${notes!}"');
+    return parts.join(' · ');
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      if (sugar != null) 'sugar': sugar,
+      if (spice != null) 'spice': spice,
+      if (salt != null) 'salt': salt,
+      if (oil != null) 'oil': oil,
+      if (notes != null && notes!.isNotEmpty) 'notes': notes,
+    };
+  }
+
+  factory FoodCustomization.fromMap(Map<String, dynamic> map) {
+    return FoodCustomization(
+      sugar: map['sugar'],
+      spice: map['spice'],
+      salt: map['salt'],
+      oil: map['oil'],
+      notes: map['notes'],
+    );
+  }
+}
+
 enum OrderStatus {
   PLACED,              // Order just placed, finding delivery partner
   ACCEPTED,            // Cook accepted the order
@@ -19,12 +74,14 @@ class OrderItem {
   final String dishName;
   final double price;
   final int quantity;
+  final FoodCustomization? customization;
 
   OrderItem({
     required this.dishId,
     required this.dishName,
     required this.price,
     required this.quantity,
+    this.customization,
   });
 
   Map<String, dynamic> toMap() {
@@ -33,6 +90,7 @@ class OrderItem {
       'dishName': dishName,
       'price': price,
       'quantity': quantity,
+      if (customization != null) 'customization': customization!.toMap(),
     };
   }
 
@@ -42,6 +100,10 @@ class OrderItem {
       dishName: map['dishName'] ?? '',
       price: (map['price'] ?? 0).toDouble(),
       quantity: map['quantity'] ?? 1,
+      customization: map['customization'] != null
+          ? FoodCustomization.fromMap(
+              Map<String, dynamic>.from(map['customization']))
+          : null,
     );
   }
 }
@@ -84,6 +146,13 @@ class OrderModel {
   final double? pendingSettlement;       // COD: Pending settlement with admin
   final bool isSettled;                  // COD: Settlement completed
 
+  // 🗓️ CUSTOMIZATION & SCHEDULING
+  final String orderType;                // "instant" | "scheduled"
+  final DateTime? scheduledDeliveryTime; // Only set when orderType == "scheduled"
+
+  // 🛒 ORDER SOURCE
+  final bool isProductOrder;             // true = seller home-market product, false = cook food
+
   OrderModel({
     required this.orderId,
     required this.customerId,
@@ -119,6 +188,9 @@ class OrderModel {
     this.cashCollected,
     this.pendingSettlement,
     this.isSettled = false,
+    this.orderType = 'instant',
+    this.scheduledDeliveryTime,
+    this.isProductOrder = false,
   });
 
   factory OrderModel.fromMap(Map<String, dynamic> map, String orderId) {
@@ -163,6 +235,10 @@ class OrderModel {
       cashCollected: (map['cashCollected'] as num?)?.toDouble(),
       pendingSettlement: (map['pendingSettlement'] as num?)?.toDouble(),
       isSettled: map['isSettled'] ?? false,
+      orderType: map['orderType'] ?? 'instant',
+      scheduledDeliveryTime:
+          (map['scheduledDeliveryTime'] as Timestamp?)?.toDate(),
+      isProductOrder: map['isProductOrder'] ?? false,
     );
   }
 
@@ -211,7 +287,13 @@ class OrderModel {
       'platformCommission': platformCommission,
       'cashCollected': cashCollected,
       'pendingSettlement': pendingSettlement,
-      'isSettled': isSettled,    };
+      'isSettled': isSettled,
+      'orderType': orderType,
+      'scheduledDeliveryTime': scheduledDeliveryTime != null
+          ? Timestamp.fromDate(scheduledDeliveryTime!)
+          : null,
+      'isProductOrder': isProductOrder,
+    };
   }
 
   OrderModel copyWith({
@@ -232,6 +314,9 @@ class OrderModel {
     double? cashCollected,
     double? pendingSettlement,
     bool? isSettled,
+    String? orderType,
+    DateTime? scheduledDeliveryTime,
+    bool? isProductOrder,
   }) {
     return OrderModel(
       orderId: orderId,
@@ -268,6 +353,10 @@ class OrderModel {
       cashCollected: cashCollected ?? this.cashCollected,
       pendingSettlement: pendingSettlement ?? this.pendingSettlement,
       isSettled: isSettled ?? this.isSettled,
+      orderType: orderType ?? this.orderType,
+      scheduledDeliveryTime:
+          scheduledDeliveryTime ?? this.scheduledDeliveryTime,
+      isProductOrder: isProductOrder ?? this.isProductOrder,
     );
   }
 }

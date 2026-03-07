@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:lottie/lottie.dart';
 import '../../providers/auth_provider.dart';
@@ -47,13 +47,13 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
-      // 🔔 Save FCM token for riders immediately after login
+      // ?? Save FCM token for riders immediately after login
       if (authProvider.currentUser?.role == 'rider') {
         try {
           await FCMService().saveFCMToken();
-          print('✅ FCM token saved for rider after login');
+          print('? FCM token saved for rider after login');
         } catch (e) {
-          print('⚠️ Failed to save FCM token: $e');
+          print('?? Failed to save FCM token: $e');
         }
       }
       
@@ -64,6 +64,9 @@ class _LoginScreenState extends State<LoginScreen> {
           break;
         case 'cook':
           Navigator.pushReplacementNamed(context, AppRouter.cookDashboardModern);
+          break;
+        case 'seller':
+          Navigator.pushReplacementNamed(context, AppRouter.sellerHome);
           break;
         case 'rider':
           Navigator.pushReplacementNamed(context, AppRouter.riderHome);
@@ -92,13 +95,13 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
-      // 🔔 Save FCM token for riders immediately after login
+      // ?? Save FCM token for riders immediately after login
       if (authProvider.currentUser?.role == 'rider') {
         try {
           await FCMService().saveFCMToken();
-          print('✅ FCM token saved for rider after Google login');
+          print('? FCM token saved for rider after Google login');
         } catch (e) {
-          print('⚠️ Failed to save FCM token: $e');
+          print('?? Failed to save FCM token: $e');
         }
       }
       
@@ -240,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Title
                 Text(
                   'Login Account',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.textPrimary,
@@ -252,7 +255,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Subtitle
                 Text(
                   'Please login with registered account',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 14,
                     color: AppTheme.textSecondary,
                   ),
@@ -263,7 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Email / Phone Field Label
                 Text(
                   'Email or Phone Number',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
@@ -278,7 +281,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     hintText: 'Enter your email or phone number',
-                    hintStyle: GoogleFonts.inter(
+                    hintStyle: GoogleFonts.poppins(
                       color: AppTheme.textSecondary,
                       fontSize: 14,
                     ),
@@ -312,7 +315,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Password Field Label
                 Text(
                   'Password',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
@@ -327,7 +330,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     hintText: 'Enter your password',
-                    hintStyle: GoogleFonts.inter(
+                    hintStyle: GoogleFonts.poppins(
                       color: AppTheme.textSecondary,
                       fontSize: 14,
                     ),
@@ -376,7 +379,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: _showForgotPasswordModal,
                     child: Text(
                       'Forgot Password?',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.primaryOrange,
@@ -410,7 +413,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           )
                         : Text(
                             'Sign In',
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -428,7 +431,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Text(
                         'Or continue with',
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.poppins(
                           fontSize: 12,
                           color: AppTheme.textSecondary,
                         ),
@@ -452,7 +455,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     label: Text(
                       'Sign In with Google',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary,
@@ -488,7 +491,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     label: Text(
                       'Sign In with Facebook',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary,
@@ -519,14 +522,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Text(
                           'Don\'t have an account? ',
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.poppins(
                             fontSize: 14,
                             color: AppTheme.textSecondary,
                           ),
                         ),
                         Text(
                           'Sign Up',
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.primaryOrange,
